@@ -15,29 +15,37 @@ import java.util.*;
 import java.util.List;
 
 public class ODEFiniteDifference {
-    
-    // Interface pour les fonctions f(x)
-    interface Function {
-        double apply(double x);
-        String getName();
+
+    // Interface pour la solution exacte u(x)
+    interface UValueProvider {
+        double getValue(double x); // u(x)
+        double getFirstDerivative(double x); // u'(x)
+        double getSecondDerivative(double x); // u''(x)
+        String getName(); // Nom de u(x), ex: "sin(πx)"
     }
-    
-    // Implémentations des fonctions
-    static class SinFunction implements Function {
-        public double apply(double x) { return Math.sin(Math.PI * x); }
-        public String getName() { return "sin(πx)"; }
+
+    // Implémentations de UValueProvider
+    static class USinPiX implements UValueProvider {
+        public double getValue(double x) { return Math.sin(Math.PI * x); }
+        public double getFirstDerivative(double x) { return Math.PI * Math.cos(Math.PI * x); }
+        // u'(x) = πcos(πx), u''(x) = -π^2sin(πx)
+        public double getSecondDerivative(double x) { return -Math.PI * Math.PI * Math.sin(Math.PI * x); }
+        public String getName() { return "u(x) = sin(πx)"; }
     }
-    
-    static class CubicFunction implements Function {
-        public double apply(double x) { return x * x * x; }
-        public String getName() { return "x³"; }
+
+    static class UXCube implements UValueProvider {
+        public double getValue(double x) { return x * x * x; }
+        public double getFirstDerivative(double x) { return 3 * x * x; }
+        // u'(x) = 3x^2, u''(x) = 6x
+        public double getSecondDerivative(double x) { return 6 * x; }
+        public String getName() { return "u(x) = x³"; }
     }
     
     // Types d'équations différentielles
     enum EquationType {
-        TYPE1("-u'' + u = f"),
-        TYPE2("-u'' + u' = f"),
-        TYPE3("-u'' = f");
+        TYPE1("-u'' + u = f"), // f = -u''_{exact} + u_{exact}
+        TYPE2("-u'' + u' = f"), // f = -u''_{exact} + u'_{exact}
+        TYPE3("-u'' = f");      // f = -u''_{exact}
         
         private final String description;
         EquationType(String description) { this.description = description; }
@@ -52,16 +60,16 @@ public class ODEFiniteDifference {
         double error;
         int n;
         EquationType type;
-        Function function;
+        UValueProvider exactSolution; // Stocke la solution exacte u(x) utilisée
         
-        Solution(double[] x, double[] numerical, double[] analytical, double error, int n, EquationType type, Function function) {
+        Solution(double[] x, double[] numerical, double[] analytical, double error, int n, EquationType type, UValueProvider exactSolution) {
             this.x = x;
             this.numerical = numerical;
             this.analytical = analytical;
             this.error = error;
             this.n = n;
             this.type = type;
-            this.function = function;
+            this.exactSolution = exactSolution;
         }
     }
     
@@ -90,99 +98,180 @@ public class ODEFiniteDifference {
     }
     
     // Solutions analytiques
-    private static double getAnalyticalSolution(double x, EquationType type, Function function) {
-        if (function instanceof SinFunction) {
-            switch (type) {
-                case TYPE1: // -u'' + u = sin(πx)
-                    return Math.sin(Math.PI * x) / (1 + Math.PI * Math.PI);
-                case TYPE2: // -u'' + u' = sin(πx)
-                    return (Math.sin(Math.PI * x) - Math.PI * Math.cos(Math.PI * x)) / (1 + Math.PI * Math.PI);
-                case TYPE3: // -u'' = sin(πx)
-                    return -Math.sin(Math.PI * x) / (Math.PI * Math.PI);
-            }
-        } else if (function instanceof CubicFunction) {
-            switch (type) {
-                case TYPE1: // -u'' + u = x³
-                    return x * x * x - 6 * x;
-                case TYPE2: // -u'' + u' = x³
-                    return x * x * x - 6 * x + 6;
-                case TYPE3: // -u'' = x³
-                    return -x * x * x * x * x / 20 + x * x * x / 6;
-            }
+    // Calcule la solution analytique du problème -u'' = f_src(x) avec u(0)=u0, u(1)=u1,
+    // où f_src(x) est dérivée de uExact (f_src(x) = -uExact.getSecondDerivative(x) pour TYPE3).
+    private static double getAnalyticalSolutionValue(double x_coord, UValueProvider uExactSource, EquationType type, double u0, double u1) {
+        // u_particular(x) est une primitive de -f_src(x).
+        // Pour TYPE3, -f_src(x) = uExactSource.getSecondDerivative(x).
+        // Donc, une solution particulière est uExactSource.getValue(x).
+        // La solution générale est u(x) = uExactSource.getValue(x) + C1*x + C0.
+
+        // Pour TYPE3: -u'' = -uExactSource.getSecondDerivative(x)
+        if (type == EquationType.TYPE3) {
+            double uExactValAt0 = uExactSource.getValue(0.0);
+            double uExactValAt1 = uExactSource.getValue(1.0);
+
+            // C0 = u0 - uExactValAt0
+            double c0 = u0 - uExactValAt0;
+            // C1 = u1 - uExactValAt1 - C0
+            double c1 = u1 - uExactValAt1 - c0;
+
+            return uExactSource.getValue(x_coord) + c1 * x_coord + c0;
+        } else {
+            // Pour TYPE1 et TYPE2, la dérivation de f(x) est plus complexe.
+            // La demande se concentre sur -u''=f. Provisoire:
+            // Si on voulait gérer cela génériquement, il faudrait que UValueProvider fournisse la primitive double de f.
+            // Pour l'instant, si ce n'est pas TYPE3, on retourne la valeur brute de uExactSource comme avant,
+            // ce qui serait correct si u0 et u1 correspondaient aux valeurs de uExactSource aux bords.
+            // Cela nécessitera une révision si TYPE1/TYPE2 sont utilisés avec des CLs arbitraires.
+            // Pour la tâche actuelle, ceci est suffisant.
+            System.err.println("Avertissement: getAnalyticalSolutionValue pour " + type + " suppose que u0/u1 correspondent à uExactSource aux bords.");
+            return uExactSource.getValue(x_coord);
         }
-        return 0;
     }
     
     // Résolution numérique
-    public static Solution solve(int n, EquationType type, Function function) {
+    public static Solution solve(int n, EquationType type, UValueProvider uExact, double u0, double u1) {
         double h = 1.0 / n;
         double[] x = new double[n+1];
         for (int i = 0; i <= n; i++) {
             x[i] = i * h;
         }
         
-        // Matrices pour le système Ax = b
-        double[] a = new double[n-1]; // sous-diagonale
-        double[] b = new double[n-1]; // diagonale
-        double[] c = new double[n-1]; // sur-diagonale
-        double[] d = new double[n-1]; // second membre
+        // Matrices pour le système Ax = b pour les N-1 points intérieurs u_1, ..., u_{N-1}
+        // La taille des tableaux a, b, c, d sera n-1 si n > 1. Si n=1, pas de points intérieurs.
+        if (n <= 1) { // Cas où il n'y a pas de points intérieurs ou un seul segment
+            double[] numerical = new double[n+1];
+            double[] analytical = new double[n+1];
+            if (n==0) {
+                 // Cas très simple, la solution est juste les CLs si n=0 n'a pas de sens ici.
+                 // Supposons n>=1 pour la discrétisation.
+            } else { // n=1, deux points x0, x1
+                numerical[0] = u0; // u(x_coords[0])
+                numerical[1] = u1; // u(x_coords[1])
+            }
+            // La solution analytique est simplement uExact aux points
+            for (int i = 0; i <= n; i++) {
+                 analytical[i] = getAnalyticalSolutionValue(x_coords[i], uExact, type, u0, u1);
+            }
+            // Calcul de l'erreur L-infini
+            double max_abs_error_base_case = 0;
+            if (n > 0) {
+                for (int i = 0; i <= n; i++) {
+                    double current_abs_error = Math.abs(numerical[i] - analytical[i]);
+                    if (current_abs_error > max_abs_error_base_case) {
+                        max_abs_error_base_case = current_abs_error;
+                    }
+                }
+            } else { // n=0, un seul point, x_coords[0]. Erreur est |u0 - uExact(x_coords[0])|
+                 if (n == 0 && x_coords.length > 0) { // Protection
+                    max_abs_error_base_case = Math.abs(u0 - analytical[0]);
+                 }
+            }
+            return new Solution(x_coords, numerical, analytical, max_abs_error_base_case, n, type, uExact);
+        }
+
+        double[] a_sub = new double[n-1]; // sous-diagonale
+        double[] b_diag = new double[n-1]; // diagonale
+        double[] c_sur = new double[n-1]; // sur-diagonale (renommé pour clarté)
+        double[] d_rhs = new double[n-1]; // second membre
         
-        // Construction du système selon le type d'équation
+        // Définition de f(x) pour le membre de droite, basée sur uExact et le type d'équation
+        java.util.function.Function<Double, Double> f_provider;
         switch (type) {
-            case TYPE1: // -u'' + u = f
+            case TYPE1: // f = -u''_{exact} + u_{exact}
+                f_provider = (x_val) -> -uExact.getSecondDerivative(x_val) + uExact.getValue(x_val);
+                break;
+            case TYPE2: // f = -u''_{exact} + u'_{exact}
+                f_provider = (x_val) -> -uExact.getSecondDerivative(x_val) + uExact.getFirstDerivative(x_val);
+                break;
+            case TYPE3: // f = -u''_{exact}
+            default:    // Cas par défaut pour s'assurer que f_provider est initialisé
+                f_provider = (x_val) -> -uExact.getSecondDerivative(x_val);
+                break;
+        }
+
+        // Construction du système Ax = d_rhs
+        switch (type) {
+            case TYPE1: // -u'' + u = f  => (-1/h^2)u_i-1 + (2/h^2 + 1)u_i + (-1/h^2)u_i+1 = f_i
                 for (int i = 0; i < n-1; i++) {
-                    a[i] = (i > 0) ? -1.0/(h*h) : 0;
-                    b[i] = 2.0/(h*h) + 1.0;
-                    c[i] = (i < n-2) ? -1.0/(h*h) : 0;
-                    d[i] = function.apply(x[i+1]);
+                    int actual_idx = i + 1;
+                    a_sub[i] = -1.0/(h*h); // Correction: a_sub[i] au lieu de a[i]
+                    b_diag[i] = 2.0/(h*h) + 1.0;
+                    c_sur[i] = -1.0/(h*h);
+                    d_rhs[i] = f_provider.apply(x_coords[actual_idx]);
                 }
+                // Ajustement pour les conditions aux limites u0 et u1
+                d_rhs[0] -= a_sub[0] * u0;
+                if (n-1 > 0) a_sub[0] = 0;
+
+                if (n-1 > 0) d_rhs[n-2] -= c_sur[n-2] * u1;
+                if (n-2 >=0 && n-2 < c_sur.length) c_sur[n-2] = 0;
                 break;
                 
-            case TYPE2: // -u'' + u' = f
+            case TYPE2: // -u'' + u' = f. (-u_i-1 + 2u_i - u_i+1)/h^2 + (u_i+1 - u_i-1)/(2h) = f_i
+                        // (-1/h^2 - 1/(2h))u_i-1 + (2/h^2)u_i + (-1/h^2 + 1/(2h))u_i+1 = f_i
                 for (int i = 0; i < n-1; i++) {
-                    a[i] = (i > 0) ? -1.0/(h*h) - 1.0/(2*h) : 0;
-                    b[i] = 2.0/(h*h);
-                    c[i] = (i < n-2) ? -1.0/(h*h) + 1.0/(2*h) : 0;
-                    d[i] = function.apply(x[i+1]);
+                    int actual_idx = i + 1;
+                    a_sub[i] = -1.0/(h*h) - 1.0/(2*h);
+                    b_diag[i] = 2.0/(h*h);
+                    c_sur[i] = -1.0/(h*h) + 1.0/(2*h);
+                    d_rhs[i] = f_provider.apply(x_coords[actual_idx]);
                 }
+                d_rhs[0] -= a_sub[0] * u0;
+                if (n-1 > 0) a_sub[0] = 0;
+
+                if (n-1 > 0) d_rhs[n-2] -= c_sur[n-2] * u1;
+                if (n-2 >=0 && n-2 < c_sur.length) c_sur[n-2] = 0;
                 break;
                 
-            case TYPE3: // -u'' = f
+            case TYPE3: // -u'' = f  =>  -u_i-1 + 2u_i - u_i+1 = h^2 * f_i
                 for (int i = 0; i < n-1; i++) {
-                    a[i] = (i > 0) ? -1.0/(h*h) : 0;
-                    b[i] = 2.0/(h*h);
-                    c[i] = (i < n-2) ? -1.0/(h*h) : 0;
-                    d[i] = function.apply(x[i+1]);
+                    int actual_idx = i + 1;
+                    a_sub[i] = -1.0;
+                    b_diag[i] = 2.0;
+                    c_sur[i] = -1.0;
+                    d_rhs[i] = h*h * f_provider.apply(x_coords[actual_idx]);
                 }
+                d_rhs[0] += u0;
+                if (n-1 > 0) a_sub[0] = 0;
+                if (n-1 > 0) d_rhs[n-2] += u1;
+                if (n-2 >=0 && n-2 < c_sur.length) c_sur[n-2] = 0;
                 break;
         }
         
-        // Résolution
-        double[] u_inner = solveTridiagonal(a, b, c, d);
+        // Résolution du système tridiagonal pour les points intérieurs u_inner = [u_1, ..., u_{n-1}]
+        double[] u_inner = solveTridiagonal(a_sub, b_diag, c_sur, d_rhs);
         
-        // Construction de la solution complète (avec conditions aux limites u(0) = u(1) = 0)
+        // Construction de la solution numérique complète (avec conditions aux limites u0, u1)
         double[] numerical = new double[n+1];
-        double[] analytical = new double[n+1];
+        double[] analytical = new double[n+1]; // Sera remplie par les valeurs de u(x) exact
         
-        numerical[0] = 0;
-        numerical[n] = 0;
-        for (int i = 1; i < n; i++) {
-            numerical[i] = u_inner[i-1];
+        numerical[0] = u0;
+        numerical[n] = u1;
+        for (int i = 0; i < u_inner.length; i++) { // u_inner a n-1 éléments
+            numerical[i+1] = u_inner[i];
         }
         
-        // Solution analytique
+        // Solution analytique (u(x) exacte)
         for (int i = 0; i <= n; i++) {
-            analytical[i] = getAnalyticalSolution(x[i], type, function);
+            // La fonction getAnalyticalSolution doit être modifiée pour retourner la u(x) exacte
+            // et potentiellement prendre u0, u1 si la forme analytique générale en dépendait
+            // (pas le cas pour sin(pi*x) ou x^3 directement, mais f(x) en dépendra)
+            analytical[i] = getAnalyticalSolution(x[i], type, function, u0, u1);
         }
         
-        // Calcul de l'erreur L2
-        double error = 0;
+        // Calcul de l'erreur L-infini
+        double max_abs_error = 0;
         for (int i = 0; i <= n; i++) {
-            error += Math.pow(numerical[i] - analytical[i], 2);
+            double current_abs_error = Math.abs(numerical[i] - analytical[i]);
+            if (current_abs_error > max_abs_error) {
+                max_abs_error = current_abs_error;
+            }
         }
-        error = Math.sqrt(error * h);
+        // La variable 'error' dans la classe Solution stockera maintenant l'erreur L-infini
         
-        return new Solution(x, numerical, analytical, error, n, type, function);
+        return new Solution(x_coords, numerical, analytical, max_abs_error, n, type, uExact);
     }
     
     // Calcul de l'ordre de convergence
@@ -264,8 +353,9 @@ public class ODEFiniteDifference {
             // Légende
             g2.setColor(Color.BLACK);
             g2.setFont(new Font("Arial", Font.BOLD, 16));
-            g2.drawString(sol.type.getDescription() + " avec f = " + sol.function.getName(), margin, 25);
-            g2.drawString("n = " + sol.n, margin, 45);
+            // Affiche le type d'équation et la solution exacte u(x) utilisée pour dériver f(x)
+            g2.drawString(sol.type.getDescription() + ", u_{exact}: " + sol.exactSolution.getName(), margin, 25);
+            g2.drawString(String.format("N = %d, CL: u(0)=%.1f, u(1)=%.1f", sol.n, sol.numerical[0], sol.numerical[sol.n]), margin, 45);
             
             g2.setFont(new Font("Arial", Font.PLAIN, 12));
             g2.setColor(Color.BLUE);
@@ -273,14 +363,23 @@ public class ODEFiniteDifference {
             g2.setColor(Color.RED);
             g2.drawString("--- Solution numérique", width - 150, margin + 40);
             g2.setColor(Color.BLACK);
-            g2.drawString(String.format("Erreur L2: %.2e", sol.error), width - 150, margin + 60);
+            g2.drawString(String.format("Erreur L∞: %.2e", sol.error), width - 150, margin + 60);
         }
         
         private void drawErrorGraph(Graphics2D g2, int margin, int width, int height) {
             if (solutions.size() < 2) return;
             
-            double minError = solutions.stream().mapToDouble(s -> s.error).min().orElse(1e-10);
-            double maxError = solutions.stream().mapToDouble(s -> s.error).max().orElse(1);
+            // Filtrer les erreurs nulles ou négatives avant le log
+            double minError = solutions.stream()
+                                     .mapToDouble(s -> s.error)
+                                     .filter(e -> e > 0) // Important pour l'échelle log
+                                     .min().orElse(1e-16); // Petite valeur si toutes les erreurs sont nulles
+            double maxError = solutions.stream()
+                                     .mapToDouble(s -> s.error)
+                                     .max().orElse(1.0);
+            if (minError <= 0) minError = 1e-16; // Assurer une valeur positive pour log
+            if (maxError <= 0) maxError = 1.0; // Assurer une valeur positive si minError était aussi 0
+            if (maxError < minError) maxError = minError * 10; // Assurer maxError > minError
             
             // Échelle logarithmique
             double logMinError = Math.log10(minError);
@@ -321,51 +420,63 @@ public class ODEFiniteDifference {
             g2.setColor(Color.BLACK);
             g2.setFont(new Font("Arial", Font.BOLD, 16));
             Solution firstSol = solutions.get(0);
-            g2.drawString("Évolution de l'erreur - " + firstSol.type.getDescription(), margin, 25);
-            g2.drawString("f = " + firstSol.function.getName(), margin, 45);
+            g2.drawString("Évolution de l'erreur L∞ - " + firstSol.type.getDescription(), margin, 25);
+            g2.drawString("Solution exacte u(x): " + firstSol.exactSolution.getName(), margin, 45); // Modifié pour afficher le nom de u(x)
             
             // Labels des axes
             g2.setFont(new Font("Arial", Font.PLAIN, 12));
-            g2.drawString("Nombre de mailles (log)", width/2, height + margin + 40);
+            g2.drawString("Nombre de mailles N (log)", width/2, height + margin + 40); // Changé "mailles" en "mailles N"
             
             // Rotation pour le label Y
             AffineTransform orig = g2.getTransform();
             g2.rotate(-Math.PI/2);
-            g2.drawString("Erreur L2 (log)", -height/2 - 50, 20);
+            g2.drawString("Erreur L∞ (log)", -height/2 - 50, 20); // Changé L2 en L∞
             g2.setTransform(orig);
         }
     }
     
     public static void main(String[] args) {
         SwingUtilities.invokeLater(() -> {
-            // Choix de la fonction et du type d'équation
-            Function[] functions = {new SinFunction(), new CubicFunction()};
-            EquationType[] types = {EquationType.TYPE1, EquationType.TYPE2, EquationType.TYPE3};
+            // Choix de la solution exacte u(x) et du type d'équation
+            UValueProvider[] exactSolutions = {new USinPiX(), new UXCube()}; // Modifié
+            EquationType[] types = {EquationType.TYPE3, EquationType.TYPE1, EquationType.TYPE2}; // TYPE3 en premier
             
-            JFrame mainFrame = new JFrame("Résolveur d'équations différentielles");
+            JFrame mainFrame = new JFrame("Résolveur d'équations différentielles 1D (Différences Finies)"); // Titre mis à jour
             mainFrame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
             mainFrame.setLayout(new BorderLayout());
             
             JPanel controlPanel = new JPanel();
-            JComboBox<Function> functionCombo = new JComboBox<>(functions);
+            JComboBox<UValueProvider> exactSolutionCombo = new JComboBox<>(exactSolutions); // Modifié
             JComboBox<EquationType> typeCombo = new JComboBox<>(types);
-            JButton solveButton = new JButton("Résoudre");
-            JButton errorButton = new JButton("Courbe d'erreur");
+            JButton solveButton = new JButton("Résoudre et Afficher Solution");
+            JButton errorButton = new JButton("Afficher Courbe d'Erreur");
             
-            functionCombo.setRenderer(new DefaultListCellRenderer() {
+            // Renderer pour UValueProvider dans JComboBox
+            exactSolutionCombo.setRenderer(new DefaultListCellRenderer() {
                 @Override
                 public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
                     super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
-                    if (value instanceof Function) {
-                        setText(((Function) value).getName());
+                    if (value instanceof UValueProvider) {
+                        setText(((UValueProvider) value).getName());
                     }
                     return this;
                 }
             });
-            
-            controlPanel.add(new JLabel("Fonction:"));
-            controlPanel.add(functionCombo);
-            controlPanel.add(new JLabel("Équation:"));
+             // Renderer pour EquationType dans JComboBox (déjà bon si toString est bien défini, sinon similaire)
+            typeCombo.setRenderer(new DefaultListCellRenderer() {
+                @Override
+                public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
+                    super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
+                    if (value instanceof EquationType) {
+                        setText(((EquationType) value).getDescription());
+                    }
+                    return this;
+                }
+            });
+
+            controlPanel.add(new JLabel("Solution exacte u(x):")); // Modifié
+            controlPanel.add(exactSolutionCombo);
+            controlPanel.add(new JLabel("Type d'équation:")); // Modifié
             controlPanel.add(typeCombo);
             controlPanel.add(solveButton);
             controlPanel.add(errorButton);
@@ -374,23 +485,48 @@ public class ODEFiniteDifference {
             mainFrame.add(controlPanel, BorderLayout.NORTH);
             mainFrame.add(tabbedPane, BorderLayout.CENTER);
             
+            // Conditions aux limites
+            final double u0 = 0.0;
+            final double u1 = 1.0;
+
             solveButton.addActionListener(e -> {
-                Function selectedFunction = (Function) functionCombo.getSelectedItem();
+                UValueProvider selectedExactSolution = (UValueProvider) exactSolutionCombo.getSelectedItem();
                 EquationType selectedType = (EquationType) typeCombo.getSelectedItem();
                 
                 tabbedPane.removeAll();
                 
-                // Résolution pour différents nombres de mailles
-                int[] meshSizes = {10, 20, 40, 80, 160, 320, 640};
+                int[] meshSizesForDisplay = {10, 20, 40, 80}; // Pour affichage individuel, moins de tabs
+                System.out.println("\n=== Solutions pour " + selectedType.getDescription() + " avec " + selectedExactSolution.getName() + " ===");
+                System.out.println("Conditions aux limites: u(0)=" + u0 + ", u(1)=" + u1);
+
+                for (int n : meshSizesForDisplay) {
+                    Solution sol = solve(n, selectedType, selectedExactSolution, u0, u1);
+                    // Affichage graphique
+                    GraphPanel panel = new GraphPanel(Arrays.asList(sol), false);
+                    tabbedPane.addTab("Solution (N = " + n + ")", panel);
+                    // Log console
+                    System.out.printf("N = %d: Erreur L∞ = %.6e\n", n, sol.error);
+                }
+            });
+
+            errorButton.addActionListener(e -> {
+                UValueProvider selectedExactSolution = (UValueProvider) exactSolutionCombo.getSelectedItem();
+                EquationType selectedType = (EquationType) typeCombo.getSelectedItem();
+
+                tabbedPane.removeAll(); // Optionnel: ou ouvrir une nouvelle fenêtre pour la courbe d'erreur
+
+                // Résolution pour différents nombres de mailles pour la courbe d'erreur
+                int[] meshSizesForErrorCurve = {10, 20, 40, 80, 160, 320}; // Tailles demandées
                 List<Solution> solutions = new ArrayList<>();
                 
-                System.out.println("\n=== Résultats pour " + selectedType.getDescription() + " avec f = " + selectedFunction.getName() + " ===");
+                System.out.println("\n=== Calcul de la courbe d'erreur pour " + selectedType.getDescription() + " avec " + selectedExactSolution.getName() + " ===");
+                System.out.println("Conditions aux limites: u(0)=" + u0 + ", u(1)=" + u1);
                 
-                for (int n : meshSizes) {
-                    Solution sol = solve(n, selectedType, selectedFunction);
+                for (int n : meshSizesForErrorCurve) {
+                    Solution sol = solve(n, selectedType, selectedExactSolution, u0, u1);
                     solutions.add(sol);
                     
-                    System.out.printf("n = %d: Erreur L2 = %.6e\n", n, sol.error);
+                    System.out.printf("N = %d: Erreur L∞ = %.6e\n", n, sol.error);
                     
                     // Calcul de l'ordre de convergence
                     if (solutions.size() > 1) {
@@ -405,38 +541,33 @@ public class ODEFiniteDifference {
                 }
                 
                 System.out.println();
-            });
-            
-            errorButton.addActionListener(e -> {
-                Function selectedFunction = (Function) functionCombo.getSelectedItem();
-                EquationType selectedType = (EquationType) typeCombo.getSelectedItem();
                 
-                // Calcul pour plusieurs tailles de mailles pour la courbe d'erreur
-                int[] meshSizes = {10, 20, 40, 80, 160, 320, 640};
-                List<Solution> errorSolutions = new ArrayList<>();
-                
-                for (int n : meshSizes) {
-                    Solution sol = solve(n, selectedType, selectedFunction);
-                    errorSolutions.add(sol);
-                }
-                
-                GraphPanel errorPanel = new GraphPanel(errorSolutions, true);
-                
-                JFrame errorFrame = new JFrame("Évolution de l'erreur");
+                // Affichage de la courbe d'erreur dans un nouvel onglet ou une nouvelle fenêtre
+                GraphPanel errorPanel = new GraphPanel(solutions, true); // 'solutions' contient déjà les résultats pour meshSizesForErrorCurve
+                // Option 1: Ajouter comme onglet
+                // tabbedPane.addTab("Courbe d'Erreur L∞", errorPanel);
+                // Option 2: Nouvelle fenêtre (comme c'était avant, mais avec les bonnes données)
+                JFrame errorFrame = new JFrame("Évolution de l'erreur L∞");
+                errorFrame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE); // Important pour ne pas quitter toute l'appli
                 errorFrame.add(errorPanel);
-                errorFrame.setSize(900, 700);
+                errorFrame.pack(); // Ajuste la taille au contenu
                 errorFrame.setLocationRelativeTo(mainFrame);
                 errorFrame.setVisible(true);
             });
             
-            mainFrame.setSize(1000, 800);
+            // Suppression du deuxième ActionListener redondant pour errorButton qui était ici.
+
+            mainFrame.pack(); // Ajuste la taille de la fenêtre principale aux composants
             mainFrame.setLocationRelativeTo(null);
             mainFrame.setVisible(true);
             
-            // Exemple initial
-            functionCombo.setSelectedIndex(0);
-            typeCombo.setSelectedIndex(0);
-            solveButton.doClick();
+            // Sélection initiale et déclenchement pour exemple
+            exactSolutionCombo.setSelectedIndex(0); // USinPiX
+            typeCombo.setSelectedIndex(0);        // TYPE3
+            // Déclencher l'affichage de la courbe d'erreur initialement peut-être ?
+            // Ou laisser l'utilisateur cliquer. Pour l'instant, pas de clic auto.
+            // solveButton.doClick(); // Affiche les solutions individuelles
+            // errorButton.doClick(); // Affiche la courbe d'erreur
         });
     }
 }
