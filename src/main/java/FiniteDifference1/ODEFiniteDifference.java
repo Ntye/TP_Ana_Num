@@ -152,7 +152,7 @@ public class ODEFiniteDifference {
             }
             // La solution analytique est simplement uExact aux points
             for (int i = 0; i <= n; i++) {
-                 analytical[i] = getAnalyticalSolutionValue(x_coords[i], uExact, type, u0, u1);
+                 analytical[i] = getAnalyticalSolutionValue(x[i], uExact, type, u0, u1); // x_coords -> x
             }
             // Calcul de l'erreur L-infini
             double max_abs_error_base_case = 0;
@@ -163,12 +163,12 @@ public class ODEFiniteDifference {
                         max_abs_error_base_case = current_abs_error;
                     }
                 }
-            } else { // n=0, un seul point, x_coords[0]. Erreur est |u0 - uExact(x_coords[0])|
-                 if (n == 0 && x_coords.length > 0) { // Protection
+            } else { // n=0, un seul point, x[0]. Erreur est |u0 - uExact(x[0])|
+                 if (n == 0 && x.length > 0) { // Protection // x_coords -> x
                     max_abs_error_base_case = Math.abs(u0 - analytical[0]);
                  }
             }
-            return new Solution(x_coords, numerical, analytical, max_abs_error_base_case, n, type, uExact);
+            return new Solution(x, numerical, analytical, max_abs_error_base_case, n, type, uExact); // x_coords -> x
         }
 
         double[] a_sub = new double[n-1]; // sous-diagonale
@@ -196,10 +196,10 @@ public class ODEFiniteDifference {
             case TYPE1: // -u'' + u = f  => (-1/h^2)u_i-1 + (2/h^2 + 1)u_i + (-1/h^2)u_i+1 = f_i
                 for (int i = 0; i < n-1; i++) {
                     int actual_idx = i + 1;
-                    a_sub[i] = -1.0/(h*h); // Correction: a_sub[i] au lieu de a[i]
+                    a_sub[i] = -1.0/(h*h);
                     b_diag[i] = 2.0/(h*h) + 1.0;
                     c_sur[i] = -1.0/(h*h);
-                    d_rhs[i] = f_provider.apply(x_coords[actual_idx]);
+                    d_rhs[i] = f_provider.apply(x[actual_idx]); // x_coords -> x
                 }
                 // Ajustement pour les conditions aux limites u0 et u1
                 d_rhs[0] -= a_sub[0] * u0;
@@ -216,7 +216,7 @@ public class ODEFiniteDifference {
                     a_sub[i] = -1.0/(h*h) - 1.0/(2*h);
                     b_diag[i] = 2.0/(h*h);
                     c_sur[i] = -1.0/(h*h) + 1.0/(2*h);
-                    d_rhs[i] = f_provider.apply(x_coords[actual_idx]);
+                    d_rhs[i] = f_provider.apply(x[actual_idx]); // x_coords -> x
                 }
                 d_rhs[0] -= a_sub[0] * u0;
                 if (n-1 > 0) a_sub[0] = 0;
@@ -231,7 +231,7 @@ public class ODEFiniteDifference {
                     a_sub[i] = -1.0;
                     b_diag[i] = 2.0;
                     c_sur[i] = -1.0;
-                    d_rhs[i] = h*h * f_provider.apply(x_coords[actual_idx]);
+                    d_rhs[i] = h*h * f_provider.apply(x[actual_idx]); // x_coords -> x
                 }
                 d_rhs[0] += u0;
                 if (n-1 > 0) a_sub[0] = 0;
@@ -255,10 +255,9 @@ public class ODEFiniteDifference {
         
         // Solution analytique (u(x) exacte)
         for (int i = 0; i <= n; i++) {
-            // La fonction getAnalyticalSolution doit être modifiée pour retourner la u(x) exacte
-            // et potentiellement prendre u0, u1 si la forme analytique générale en dépendait
-            // (pas le cas pour sin(pi*x) ou x^3 directement, mais f(x) en dépendra)
-            analytical[i] = getAnalyticalSolution(x[i], type, function, u0, u1);
+            // La fonction getAnalyticalSolutionValue retourne la solution analytique u(x)
+            // pour le problème posé avec les CLs u0, u1 et f(x) dérivé de uExact.
+            analytical[i] = getAnalyticalSolutionValue(x[i], uExact, type, u0, u1);
         }
         
         // Calcul de l'erreur L-infini
@@ -271,7 +270,7 @@ public class ODEFiniteDifference {
         }
         // La variable 'error' dans la classe Solution stockera maintenant l'erreur L-infini
         
-        return new Solution(x_coords, numerical, analytical, max_abs_error, n, type, uExact);
+        return new Solution(x, numerical, analytical, max_abs_error, n, type, uExact); // x_coords -> x
     }
     
     // Calcul de l'ordre de convergence

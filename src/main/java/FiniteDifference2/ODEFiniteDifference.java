@@ -77,6 +77,7 @@ public class ODEFiniteDifference {
         double hy_sq = hy_step * hy_step;
 
         double[][] u_old_iter = new double[nx_intervals + 1][ny_intervals + 1];
+        double maxAbsoluteDifference = 0.0; // Déclarer ici pour la portée
 
         // Appliquer les conditions aux limites (Dirichlet) à la grille de solution u_solution_grid
         for (int i = 0; i <= nx_intervals; i++) {
@@ -94,7 +95,7 @@ public class ODEFiniteDifference {
                 System.arraycopy(u_solution_grid[i], 0, u_old_iter[i], 0, ny_intervals + 1);
             }
 
-            double maxAbsoluteDifference = 0.0;
+            maxAbsoluteDifference = 0.0; // Réinitialiser pour cette itération
 
             // Mettre à jour les points intérieurs
             for (int i = 1; i < nx_intervals; i++) {

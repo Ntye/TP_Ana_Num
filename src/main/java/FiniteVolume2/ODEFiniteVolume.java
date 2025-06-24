@@ -76,6 +76,7 @@ public class ODEFiniteVolume {
         double hy_sq = hy_step * hy_step;
 
         double[][] u_old_iter = new double[nx_intervals + 1][ny_intervals + 1];
+        double maxAbsoluteDifference = 0.0; // Déclarer ici pour la portée
 
         for (int i = 0; i <= nx_intervals; i++) {
             for (int j = 0; j <= ny_intervals; j++) {
@@ -92,7 +93,7 @@ public class ODEFiniteVolume {
                 System.arraycopy(u_solution_grid[i], 0, u_old_iter[i], 0, ny_intervals + 1);
             }
 
-            double maxAbsoluteDifference = 0.0;
+            maxAbsoluteDifference = 0.0; // Réinitialiser pour cette itération
 
             for (int i = 1; i < nx_intervals; i++) {
                 for (int j = 1; j < ny_intervals; j++) {
