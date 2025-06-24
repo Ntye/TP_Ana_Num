@@ -28,9 +28,9 @@ Chaque package contient une classe principale avec une méthode `main` qui lance
     ```bash
     mkdir out
     ```
-    Compilez tous les fichiers `.java` en spécifiant le répertoire de sortie. Depuis la racine du projet :
+    Compilez tous les fichiers `.java` en spécifiant le répertoire de sortie et l'encodage UTF-8 pour une gestion correcte des accents. Depuis la racine du projet :
     ```bash
-    javac -d out src/main/java/FiniteDifference1/ODEFiniteDifference.java src/main/java/FiniteVolume1/ODEFiniteVolume.java src/main/java/FiniteDifference2/ODEFiniteDifference.java src/main/java/FiniteVolume2/ODEFiniteVolume.java
+    javac -encoding UTF-8 -d out src/main/java/FiniteDifference1/ODEFiniteDifference.java src/main/java/FiniteVolume1/ODEFiniteVolume.java src/main/java/FiniteDifference2/ODEFiniteDifference.java src/main/java/FiniteVolume2/ODEFiniteVolume.java
     ```
     Si vous utilisez Java 11+ et que les classes `HeatmapPanel` sont laissées comme classes de premier niveau (non-statiques imbriquées ou publiques séparées) dans les fichiers 2D, vous pourriez avoir besoin de les compiler explicitement ou de les rendre statiques imbriquées / publiques. Le code fourni les a comme classes de premier niveau dans le même fichier, ce qui est valide.
 

@@ -2,22 +2,23 @@ package FiniteVolume2;
 
 import javax.swing.*;
 import java.awt.*;
-import java.awt.geom.Path2D; // Pourrait être utile pour des tracés plus complexes
-import java.awt.image.BufferedImage; // Optionnel pour affichage heatmap
+import java.awt.geom.Path2D;
+import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.stream.Collectors; // Ajouté pour Java 8+ streams
+import java.util.stream.Collectors;
 
 public class ODEFiniteVolume {
 
     // Interface pour la solution exacte u(x,y) et son laplacien
     interface UValueProvider2D {
         double getValue(double x, double y);
-        double getLaplacian(double x, double y); // u_xx + u_yy
+        double getLaplacian(double x, double y);
         String getName();
     }
 
+    // Implémentations de UValueProvider2D
     static class USinPiXSinPiY implements UValueProvider2D {
         public double getValue(double x, double y) {
             return Math.sin(Math.PI * x) * Math.sin(Math.PI * y);
@@ -38,6 +39,7 @@ public class ODEFiniteVolume {
         public String getName() { return "u(x,y) = x³y³"; }
     }
 
+    // Classe pour stocker les résultats de la solution 2D
     static class Solution2D {
         double[][] x_coords_node;
         double[][] y_coords_node;
@@ -67,6 +69,7 @@ public class ODEFiniteVolume {
         }
     }
 
+    // Solveur itératif de Jacobi pour le système 2D résultant de -Δu = f
     private static void solveJacobi(double[][] u_solution_grid, double[][] f_source_grid,
                                     int nx_intervals, int ny_intervals, int maxIterations,
                                     double convergenceTolerance, UValueProvider2D uExactProvider) {
@@ -76,8 +79,9 @@ public class ODEFiniteVolume {
         double hy_sq = hy_step * hy_step;
 
         double[][] u_old_iter = new double[nx_intervals + 1][ny_intervals + 1];
-        double maxAbsoluteDifference = 0.0; // Déclarer ici pour la portée
+        double maxAbsoluteDifference = 0.0;
 
+        // Appliquer les conditions aux limites de Dirichlet initiales
         for (int i = 0; i <= nx_intervals; i++) {
             for (int j = 0; j <= ny_intervals; j++) {
                 if (i == 0 || i == nx_intervals || j == 0 || j == ny_intervals) {
@@ -92,9 +96,7 @@ public class ODEFiniteVolume {
             for (int i = 0; i <= nx_intervals; i++) {
                 System.arraycopy(u_solution_grid[i], 0, u_old_iter[i], 0, ny_intervals + 1);
             }
-
-            maxAbsoluteDifference = 0.0; // Réinitialiser pour cette itération
-
+            maxAbsoluteDifference = 0.0;
             for (int i = 1; i < nx_intervals; i++) {
                 for (int j = 1; j < ny_intervals; j++) {
                     double sum_neighbors_terms = (u_old_iter[i-1][j] + u_old_iter[i+1][j])/hx_sq +
@@ -107,15 +109,15 @@ public class ODEFiniteVolume {
                     }
                 }
             }
-
             if (maxAbsoluteDifference < convergenceTolerance) {
-                System.out.println("Jacobi (2D Finite Volumes) converged in " + (iter + 1) + " iterations. Max Difference = " + maxAbsoluteDifference);
+                System.out.println("Jacobi (Volumes Finis 2D) a convergé en " + (iter + 1) + " itérations. Différence Max = " + maxAbsoluteDifference);
                 return;
             }
         }
-        System.out.println("Jacobi (2D Finite Volumes): Max iterations reached without convergence. Max Difference = " + maxAbsoluteDifference);
+        System.out.println("Jacobi (Volumes Finis 2D): Nombre max d'itérations atteint sans convergence. Différence Max = " + maxAbsoluteDifference);
     }
 
+    // Méthode principale de résolution pour le problème 2D
     public static Solution2D solve(int nx_intervals, int ny_intervals, UValueProvider2D uExactProvider,
                                    int maxSolverIter, double solverTolerance) {
         Solution2D sol = new Solution2D(nx_intervals, ny_intervals, uExactProvider);
@@ -161,26 +163,32 @@ public class ODEFiniteVolume {
     public static void main(String[] args) {
         SwingUtilities.invokeLater(() -> {
             UValueProvider2D[] exactSolutions = {new USinPiXSinPiY(), new UX3Y3()};
+            Font uiFont = new Font("SansSerif", Font.PLAIN, 12);
 
-            JFrame mainFrame = new JFrame("Résolveur Volumes Finis 2D (-Δu = f)"); // Modifié
+            JFrame mainFrame = new JFrame("Résolveur Volumes Finis 2D (-Δu = f)");
             mainFrame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
             mainFrame.setLayout(new BorderLayout(5,5));
 
             JPanel controlPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 5));
             JComboBox<UValueProvider2D> exactSolutionCombo = new JComboBox<>(exactSolutions);
+            exactSolutionCombo.setFont(uiFont);
             exactSolutionCombo.setRenderer(new DefaultListCellRenderer() {
                  @Override
                 public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
                     super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
                     if (value instanceof UValueProvider2D) setText(((UValueProvider2D) value).getName());
+                    setFont(uiFont);
                     return this;
                 }
             });
 
-            controlPanel.add(new JLabel("Sol. exacte u(x,y):"));
+            JLabel exactSolLabel = new JLabel("Sol. exacte u(x,y):");
+            exactSolLabel.setFont(uiFont);
+            controlPanel.add(exactSolLabel);
             controlPanel.add(exactSolutionCombo);
             
             JButton solveButton = new JButton("Résoudre et Afficher");
+            solveButton.setFont(uiFont);
             controlPanel.add(solveButton);
 
             JTextArea resultsArea = new JTextArea(12, 50);
@@ -189,7 +197,8 @@ public class ODEFiniteVolume {
             JScrollPane scrollPane = new JScrollPane(resultsArea);
 
             JPanel heatmapsOuterPanel = new JPanel(new BorderLayout(5,5));
-            JLabel heatmapTitleLabel = new JLabel("Heatmaps (Numérique, Analytique, Erreur) - Vol. Finis 2D", SwingConstants.CENTER); // Modifié
+            JLabel heatmapTitleLabel = new JLabel("Cartes de Chaleur (Numérique, Analytique, Erreur) - Vol. Finis 2D", SwingConstants.CENTER);
+            heatmapTitleLabel.setFont(new Font("SansSerif", Font.BOLD, 14));
             heatmapsOuterPanel.add(heatmapTitleLabel, BorderLayout.NORTH);
             JPanel heatmapsGridPanel = new JPanel(new GridLayout(1,3,5,5));
             heatmapsOuterPanel.add(heatmapsGridPanel, BorderLayout.CENTER);
@@ -209,7 +218,8 @@ public class ODEFiniteVolume {
                 List<Solution2D> solutions = new ArrayList<>();
                 Solution2D prevSol = null;
 
-                resultsArea.append("Résolution (Volumes Finis 2D) pour u_exact: " + selectedExactSolution.getName() + "\n"); // Modifié
+                resultsArea.append("Résolution pour solution exacte: " + selectedExactSolution.getName() + "\n");
+                resultsArea.append("Méthode: Volumes Finis 2D\n");
                 resultsArea.append("-----------------------------------------------------------\n");
                 resultsArea.append(String.format("%-5s | %-12s | %-8s\n", "N", "Erreur L∞", "Ordre"));
                 resultsArea.append("-----------------------------------------------------------\n");
@@ -229,12 +239,12 @@ public class ODEFiniteVolume {
 
                 if (!solutions.isEmpty()) {
                     Solution2D lastSol = solutions.get(solutions.size()-1);
-                    heatmapsGridPanel.add(new HeatmapPanel(lastSol.numerical, "Numérique VF N=" + lastSol.nx)); // Modifié
-                    heatmapsGridPanel.add(new HeatmapPanel(lastSol.analytical, "Analytique VF N=" + lastSol.nx)); // Modifié
+                    heatmapsGridPanel.add(new HeatmapPanel(lastSol.numerical, "Numérique VF (N=" + lastSol.nx + ")"));
+                    heatmapsGridPanel.add(new HeatmapPanel(lastSol.analytical, "Analytique VF (N=" + lastSol.nx + ")"));
                     
                     double[][] errorGrid = new double[lastSol.nx+1][lastSol.ny+1];
                     for(int i=0; i<=lastSol.nx; i++) for(int j=0; j<=lastSol.ny; j++) errorGrid[i][j] = Math.abs(lastSol.numerical[i][j] - lastSol.analytical[i][j]);
-                    heatmapsGridPanel.add(new HeatmapPanel(errorGrid, "Erreur Abs. VF N=" + lastSol.nx)); // Modifié
+                    heatmapsGridPanel.add(new HeatmapPanel(errorGrid, "Erreur Absolue VF (N=" + lastSol.nx + ")"));
                 }
                 heatmapsGridPanel.revalidate();
                 heatmapsGridPanel.repaint();
@@ -254,8 +264,7 @@ public class ODEFiniteVolume {
     }
 }
 
-// HeatmapPanel class (identical to the one in ODEFiniteDifference2.java, can be externalized)
-// Simple class to display 2D data as a heatmap
+// Classe simple pour afficher des données 2D sous forme de carte de chaleur
 class HeatmapPanel extends JPanel {
     private double[][] data;
     private String title;
@@ -285,7 +294,8 @@ class HeatmapPanel extends JPanel {
     protected void paintComponent(Graphics g) {
         super.paintComponent(g);
         if (data == null || data.length == 0 || data[0].length == 0) {
-            g.drawString("Pas de données", 10, 20);
+            g.setFont(new Font("SansSerif", Font.PLAIN, 12));
+            g.drawString("Aucune donnée à afficher", 10, 20);
             return;
         }
 
@@ -304,6 +314,7 @@ class HeatmapPanel extends JPanel {
         int offsetY = 20 + (usableHeight - rows * cellHeight) / 2;
 
         g.setColor(Color.BLACK);
+        g.setFont(new Font("SansSerif", Font.BOLD, 12));
         g.drawString(title, panelWidth/2 - g.getFontMetrics().stringWidth(title)/2, 15);
 
         for (int i = 0; i < rows; i++) {
@@ -326,6 +337,7 @@ class HeatmapPanel extends JPanel {
             }
         }
         g.setColor(Color.BLACK);
+        g.setFont(new Font("SansSerif", Font.PLAIN, 10));
         g.drawString(String.format("Min: %.2e", minVal), offsetX, panelHeight - 5);
         g.drawString(String.format("Max: %.2e", maxVal), offsetX + cols * cellWidth - g.getFontMetrics().stringWidth(String.format("Max: %.2e", maxVal)), panelHeight - 5);
     }
