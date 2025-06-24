@@ -109,11 +109,11 @@ public class ODEFiniteVolume {
             }
 
             if (maxAbsoluteDifference < convergenceTolerance) {
-                System.out.println("Jacobi (Volumes Finis 2D) a convergé en " + (iter + 1) + " itérations. MaxDiff = " + maxAbsoluteDifference); // Modifié
+                System.out.println("Jacobi (2D Finite Volumes) converged in " + (iter + 1) + " iterations. Max Difference = " + maxAbsoluteDifference);
                 return;
             }
         }
-        System.out.println("Jacobi (Volumes Finis 2D): convergence non atteinte après " + maxIterations + " itérations. MaxDiff = " + maxAbsoluteDifference); // Modifié
+        System.out.println("Jacobi (2D Finite Volumes): Max iterations reached without convergence. Max Difference = " + maxAbsoluteDifference);
     }
 
     public static Solution2D solve(int nx_intervals, int ny_intervals, UValueProvider2D uExactProvider,
@@ -254,7 +254,8 @@ public class ODEFiniteVolume {
     }
 }
 
-// HeatmapPanel class (identique à celle de ODEFiniteDifference.java, peut être externalisée)
+// HeatmapPanel class (identical to the one in ODEFiniteDifference2.java, can be externalized)
+// Simple class to display 2D data as a heatmap
 class HeatmapPanel extends JPanel {
     private double[][] data;
     private String title;

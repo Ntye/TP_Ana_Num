@@ -420,17 +420,17 @@ public class ODEFiniteVolume {
     public static void main(String[] args) {
         SwingUtilities.invokeLater(() -> {
             UValueProvider[] exactSolutions = {new USinPiX(), new UXCube()};
-            EquationType[] types = {EquationType.TYPE3, EquationType.TYPE1, EquationType.TYPE2};
+            EquationType[] types = {EquationType.TYPE3, EquationType.TYPE1, EquationType.TYPE2}; // TYPE3 first for default
             
-            JFrame mainFrame = new JFrame("Résolveur d'équations différentielles 1D (Volumes Finis)");
+            JFrame mainFrame = new JFrame("1D Differential Equation Solver (Finite Volumes)"); // Translated
             mainFrame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
             mainFrame.setLayout(new BorderLayout());
             
             JPanel controlPanel = new JPanel();
             JComboBox<UValueProvider> exactSolutionCombo = new JComboBox<>(exactSolutions);
             JComboBox<EquationType> typeCombo = new JComboBox<>(types);
-            JButton solveButton = new JButton("Résoudre et Afficher Solution");
-            JButton errorButton = new JButton("Afficher Courbe d'Erreur");
+            JButton solveButton = new JButton("Solve & Display Solution"); // English
+            JButton errorButton = new JButton("Display Error Curve");    // English
             
             exactSolutionCombo.setRenderer(new DefaultListCellRenderer() {
                 @Override
@@ -453,9 +453,9 @@ public class ODEFiniteVolume {
                 }
             });
 
-            controlPanel.add(new JLabel("Solution exacte u(x):"));
+            controlPanel.add(new JLabel("Exact Solution u(x):")); // English
             controlPanel.add(exactSolutionCombo);
-            controlPanel.add(new JLabel("Type d'équation:"));
+            controlPanel.add(new JLabel("Equation Type:"));    // English
             controlPanel.add(typeCombo);
             controlPanel.add(solveButton);
             controlPanel.add(errorButton);
@@ -474,14 +474,15 @@ public class ODEFiniteVolume {
                 tabbedPane.removeAll();
 
                 int[] meshSizesForDisplay = {10, 20, 40, 80};
-                System.out.println("\n=== Solutions (Volumes Finis 1D) pour " + selectedType.getDescription() + " avec " + selectedExactSolution.getName() + " ===");
-                System.out.println("Conditions aux limites: u(0)=" + u0_cl_val + ", u(1)=" + u1_cl_val);
+                System.out.println("\n=== Solutions (1D Finite Volumes) for " + selectedType.getDescription() +
+                                   " with Exact u(x) = " + selectedExactSolution.getName() + " ==="); // Translated
+                System.out.println("Boundary Conditions: u(0)=" + u0_cl_val + ", u(1)=" + u1_cl_val); // English
 
                 for (int n_val_loop : meshSizesForDisplay) {
                     Solution sol = solve(n_val_loop, selectedType, selectedExactSolution, u0_cl_val, u1_cl_val);
                     GraphPanel panel = new GraphPanel(Arrays.asList(sol), false);
-                    tabbedPane.addTab("Solution (N = " + n_val_loop + ")", panel);
-                    System.out.printf("N = %d: Erreur L∞ = %.6e\n", n_val_loop, sol.error);
+                    tabbedPane.addTab("Solution (N = " + n_val_loop + ")", panel); // Tab title can remain short
+                    System.out.printf("N = %d: L∞ Error = %.6e\n", n_val_loop, sol.error); // English
                 }
             });
 
@@ -492,30 +493,33 @@ public class ODEFiniteVolume {
                 tabbedPane.removeAll();
 
                 int[] meshSizesForErrorCurve = {10, 20, 40, 80, 160, 320};
-                List<Solution> solutions = new ArrayList<>();
+                List<Solution> solutionsList = new ArrayList<>(); // Renamed
 
-                System.out.println("\n=== Calcul de la courbe d'erreur (Volumes Finis 1D) pour " + selectedType.getDescription() + " avec " + selectedExactSolution.getName() + " ===");
-                System.out.println("Conditions aux limites: u(0)=" + u0_cl_val + ", u(1)=" + u1_cl_val);
+                System.out.println("\n=== Calculating Error Curve (1D Finite Volumes) for " + selectedType.getDescription() +
+                                   " with Exact u(x) = " + selectedExactSolution.getName() + " ==="); // Translated
+                System.out.println("Boundary Conditions: u(0)=" + u0_cl_val + ", u(1)=" + u1_cl_val); // English
 
-                Solution prevSol = null;
+                Solution previousSolution = null; // Renamed
                 for (int n_val_loop : meshSizesForErrorCurve) {
-                    Solution sol = solve(n_val_loop, selectedType, selectedExactSolution, u0_cl_val, u1_cl_val);
-                    solutions.add(sol);
-                    System.out.printf("N = %d: Erreur L∞ = %.6e\n", n_val_loop, sol.error);
+                    Solution currentSolution = solve(n_val_loop, selectedType, selectedExactSolution, u0_cl_val, u1_cl_val); // Renamed
+                    solutionsList.add(currentSolution);
+                    System.out.printf("N = %d: L∞ Error = %.6e\n", n_val_loop, currentSolution.error); // English
                     
-                    if (prevSol != null) {
-                        double order = calculateConvergenceOrder(prevSol.error, sol.error, prevSol.n, sol.n);
-                        System.out.printf("Ordre de convergence (entre N=%d et N=%d): %.2f\n", prevSol.n, sol.n, order);
+                    if (previousSolution != null) {
+                        double order = calculateConvergenceOrder(previousSolution.error, currentSolution.error,
+                                                               previousSolution.n, currentSolution.n);
+                        System.out.printf("Convergence Order (between N=%d and N=%d): %.2f\n", // English
+                                          previousSolution.n, currentSolution.n, order);
                     }
-                    prevSol = sol;
+                    previousSolution = currentSolution;
                 }
 
                 System.out.println();
 
-                GraphPanel errorPanel = new GraphPanel(solutions, true);
-                JFrame errorFrame = new JFrame("Évolution de l'erreur L∞ (Volumes Finis 1D)");
+                GraphPanel errorCurvePanel = new GraphPanel(solutionsList, true); // Renamed
+                JFrame errorFrame = new JFrame("L∞ Error Evolution (1D Finite Volumes)"); // Translated
                 errorFrame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
-                errorFrame.add(errorPanel);
+                errorFrame.add(errorCurvePanel);
                 errorFrame.pack();
                 errorFrame.setLocationRelativeTo(mainFrame);
                 errorFrame.setVisible(true);

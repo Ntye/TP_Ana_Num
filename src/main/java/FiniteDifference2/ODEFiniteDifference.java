@@ -11,21 +11,24 @@ import java.util.stream.Collectors; // Ajouté pour Java 8+ streams
 
 public class ODEFiniteDifference {
 
-    // Interface pour la solution exacte u(x,y) et son laplacien
+    // Interface for the exact solution u(x,y) and its Laplacian
     interface UValueProvider2D {
-        double getValue(double x, double y);
-        double getLaplacian(double x, double y); // u_xx + u_yy
-        String getName();
+        double getValue(double x, double y); // u(x,y) value
+        double getLaplacian(double x, double y); // Laplacian value: u_xx + u_yy
+        String getName(); // Name of the exact solution, e.g., "u(x,y) = sin(πx)sin(πy)"
     }
 
+    // Implementations of UValueProvider2D
     static class USinPiXSinPiY implements UValueProvider2D {
         public double getValue(double x, double y) {
             return Math.sin(Math.PI * x) * Math.sin(Math.PI * y);
         }
         public double getLaplacian(double x, double y) {
+            // u_xx = -π²sin(πx)sin(πy), u_yy = -π²sin(πx)sin(πy)
+            // Δu = -2π²sin(πx)sin(πy)
             return -2 * Math.PI * Math.PI * Math.sin(Math.PI * x) * Math.sin(Math.PI * y);
         }
-        public String getName() { return "u(x,y) = sin(πx)sin(πy)"; }
+        public String getName() { return "u(x,y) = sin(πx)sin(πy)"; } // Name for UI
     }
 
     static class UX3Y3 implements UValueProvider2D {
@@ -33,32 +36,36 @@ public class ODEFiniteDifference {
             return x * x * x * y * y * y;
         }
         public double getLaplacian(double x, double y) {
+            // u_x = 3x²y³, u_xx = 6xy³
+            // u_y = 3x³y², u_yy = 6x³y
+            // Δu = 6xy³ + 6x³y
             return 6 * x * y * y * y + 6 * x * x * x * y;
         }
-        public String getName() { return "u(x,y) = x³y³"; }
+        public String getName() { return "u(x,y) = x³y³"; } // Name for UI
     }
 
+    // Class to store 2D solution results
     static class Solution2D {
-        double[][] x_coords_node; // x_coords_node[i][j] = x_i (coordonnée x du noeud i,j)
-        double[][] y_coords_node; // y_coords_node[i][j] = y_j (coordonnée y du noeud i,j)
-        double[][] numerical;     // Valeur numérique u_num[i][j] au noeud (i,j)
-        double[][] analytical;    // Valeur analytique u_exact[i][j] au noeud (i,j)
-        double errorLinf;
-        int nx, ny; // Nombre d'intervalles dans chaque direction (Nx segments en x, Ny en y)
-        UValueProvider2D exactSolutionProvider;
+        double[][] x_coords_node; // x_coords_node[i][j] = x_i (x-coordinate of node i,j)
+        double[][] y_coords_node; // y_coords_node[i][j] = y_j (y-coordinate of node i,j)
+        double[][] numerical;     // Numerical solution u_num[i][j] at node (i,j)
+        double[][] analytical;    // Analytical solution u_exact[i][j] at node (i,j)
+        double errorLinf;         // L-infinity error
+        int nx, ny;               // Number of intervals in x and y directions
+        UValueProvider2D exactSolutionProvider; // Provider for the exact solution details
 
         Solution2D(int nx_intervals, int ny_intervals, UValueProvider2D exactSolProvider) {
             this.nx = nx_intervals;
             this.ny = ny_intervals;
-            // Les grilles ont (nx+1) x (ny+1) points/noeuds
+            // Grids have (nx+1) x (ny+1) points/nodes
             this.x_coords_node = new double[nx + 1][ny + 1];
             this.y_coords_node = new double[nx + 1][ny + 1];
             this.numerical = new double[nx + 1][ny + 1];
             this.analytical = new double[nx + 1][ny + 1];
             this.exactSolutionProvider = exactSolProvider;
 
-            double hx_step = 1.0 / nx;
-            double hy_step = 1.0 / ny;
+            double hx_step = 1.0 / nx; // Step size in x
+            double hy_step = 1.0 / ny; // Step size in y
             for (int i = 0; i <= nx; i++) {
                 for (int j = 0; j <= ny; j++) {
                     x_coords_node[i][j] = i * hx_step;
@@ -68,6 +75,10 @@ public class ODEFiniteDifference {
         }
     }
 
+    // Jacobi iterative solver for the 2D system from -Δu = f
+    // u_solution_grid: 2D grid for the solution (output), includes BCs.
+    // f_source_grid: 2D grid for the source term f(x_i, y_j).
+    // nx_intervals, ny_intervals: number of intervals.
     private static void solveJacobi(double[][] u_solution_grid, double[][] f_source_grid,
                                     int nx_intervals, int ny_intervals, int maxIterations,
                                     double convergenceTolerance, UValueProvider2D uExactProvider) {
@@ -76,36 +87,34 @@ public class ODEFiniteDifference {
         double hx_sq = hx_step * hx_step;
         double hy_sq = hy_step * hy_step;
 
-        double[][] u_old_iter = new double[nx_intervals + 1][ny_intervals + 1];
-        double maxAbsoluteDifference = 0.0; // Déclarer ici pour la portée
+        double[][] u_old_iter = new double[nx_intervals + 1][ny_intervals + 1]; // Previous iteration values
+        double maxAbsoluteDifference = 0.0; // Declare for scope
 
-        // Appliquer les conditions aux limites (Dirichlet) à la grille de solution u_solution_grid
+        // Apply initial Dirichlet boundary conditions to u_solution_grid
         for (int i = 0; i <= nx_intervals; i++) {
             for (int j = 0; j <= ny_intervals; j++) {
-                if (i == 0 || i == nx_intervals || j == 0 || j == ny_intervals) { // Sur le bord
+                if (i == 0 || i == nx_intervals || j == 0 || j == ny_intervals) { // On the boundary
                     u_solution_grid[i][j] = uExactProvider.getValue(i * hx_step, j * hy_step);
                 } else {
-                    u_solution_grid[i][j] = 0.0; // Initialisation pour les points intérieurs (estimation initiale)
+                    u_solution_grid[i][j] = 0.0; // Initial guess for interior points
                 }
             }
         }
 
         for (int iter = 0; iter < maxIterations; iter++) {
-            for (int i = 0; i <= nx_intervals; i++) { // Copier u vers u_old_iter
+            // Copy current solution u_solution_grid to u_old_iter
+            for (int i = 0; i <= nx_intervals; i++) {
                 System.arraycopy(u_solution_grid[i], 0, u_old_iter[i], 0, ny_intervals + 1);
             }
 
-            maxAbsoluteDifference = 0.0; // Réinitialiser pour cette itération
+            maxAbsoluteDifference = 0.0; // Reset max difference for this iteration
 
-            // Mettre à jour les points intérieurs
+            // Update interior points
             for (int i = 1; i < nx_intervals; i++) {
                 for (int j = 1; j < ny_intervals; j++) {
-                    // Pour - ( (u_i+1,j - 2u_ij + u_i-1,j)/hx_sq + (u_i,j+1 - 2u_ij + u_i,j-1)/hy_sq ) = f_ij
-                    // (2/hx_sq + 2/hy_sq) u_ij = (u_i+1,j + u_i-1,j)/hx_sq + (u_i,j+1 + u_i,j-1)/hy_sq + f_ij
-                    // u_ij = ( (u_old_iter[i+1][j] + u_old_iter[i-1][j])/hx_sq +
-                    //          (u_old_iter[i][j+1] + u_old_iter[i][j-1])/hy_sq +
-                    //          f_source_grid[i][j]
-                    //        ) / (2.0/hx_sq + 2.0/hy_sq)
+                    // Standard 5-point stencil for - (u_xx + u_yy) = f_ij
+                    // (2/hx² + 2/hy²) u_ij = (u_old[i+1][j] + u_old[i-1][j])/hx² +
+                    //                        (u_old[i][j+1] + u_old[i][j-1])/hy² + f_ij
                     
                     double sum_neighbors_terms = (u_old_iter[i-1][j] + u_old_iter[i+1][j])/hx_sq +
                                                  (u_old_iter[i][j-1] + u_old_iter[i][j+1])/hy_sq;
@@ -120,14 +129,16 @@ public class ODEFiniteDifference {
                 }
             }
 
+            // Check for convergence
             if (maxAbsoluteDifference < convergenceTolerance) {
-                System.out.println("Jacobi a convergé en " + (iter + 1) + " itérations. MaxDiff = " + maxAbsoluteDifference);
+                System.out.println("Jacobi converged in " + (iter + 1) + " iterations. Max Difference = " + maxAbsoluteDifference);
                 return;
             }
         }
-        System.out.println("Jacobi: convergence non atteinte après " + maxIterations + " itérations. MaxDiff = " + maxAbsoluteDifference);
+        System.out.println("Jacobi: Max iterations reached without convergence. Max Difference = " + maxAbsoluteDifference);
     }
 
+    // Main solver method for 2D problem
     public static Solution2D solve(int nx_intervals, int ny_intervals, UValueProvider2D uExactProvider,
                                    int maxSolverIter, double solverTolerance) {
         Solution2D sol = new Solution2D(nx_intervals, ny_intervals, uExactProvider);
@@ -174,9 +185,9 @@ public class ODEFiniteDifference {
         SwingUtilities.invokeLater(() -> {
             UValueProvider2D[] exactSolutions = {new USinPiXSinPiY(), new UX3Y3()};
             
-            JFrame mainFrame = new JFrame("Résolveur Différences Finies 2D (-Δu = f)");
+            JFrame mainFrame = new JFrame("2D Finite Difference Solver (-Δu = f)"); // English title
             mainFrame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-            mainFrame.setLayout(new BorderLayout(5,5)); // Ajout de marges
+            mainFrame.setLayout(new BorderLayout(5,5));
 
             JPanel controlPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 5));
             JComboBox<UValueProvider2D> exactSolutionCombo = new JComboBox<>(exactSolutions);
@@ -189,50 +200,47 @@ public class ODEFiniteDifference {
                 }
             });
 
-            controlPanel.add(new JLabel("Sol. exacte u(x,y):"));
+            controlPanel.add(new JLabel("Exact Solution u(x,y):")); // English label
             controlPanel.add(exactSolutionCombo);
             
-            JButton solveButton = new JButton("Résoudre et Afficher");
+            JButton solveButton = new JButton("Solve & Display"); // English button text
             controlPanel.add(solveButton);
 
-            JTextArea resultsArea = new JTextArea(12, 50); // Taille ajustée
+            JTextArea resultsArea = new JTextArea(12, 50);
             resultsArea.setEditable(false);
             resultsArea.setFont(new Font("Monospaced", Font.PLAIN, 12));
             JScrollPane scrollPane = new JScrollPane(resultsArea);
 
-            // Panneau pour les heatmaps
             JPanel heatmapsOuterPanel = new JPanel(new BorderLayout(5,5));
-            JLabel heatmapTitleLabel = new JLabel("Heatmaps (Numérique, Analytique, Erreur)", SwingConstants.CENTER);
+            JLabel heatmapTitleLabel = new JLabel("Heatmaps (Numerical, Analytical, Error) - Finite Differences 2D", SwingConstants.CENTER); // English title
             heatmapsOuterPanel.add(heatmapTitleLabel, BorderLayout.NORTH);
-            JPanel heatmapsGridPanel = new JPanel(new GridLayout(1,3,5,5)); // 1 ligne, 3 colonnes, avec espacement
+            JPanel heatmapsGridPanel = new JPanel(new GridLayout(1,3,5,5));
             heatmapsOuterPanel.add(heatmapsGridPanel, BorderLayout.CENTER);
 
-            // Split pane pour séparer texte et graphiques
             JSplitPane splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT, scrollPane, heatmapsOuterPanel);
-            splitPane.setResizeWeight(0.4); // Donne plus de place aux graphiques initialement
+            splitPane.setResizeWeight(0.4);
 
             mainFrame.add(controlPanel, BorderLayout.NORTH);
             mainFrame.add(splitPane, BorderLayout.CENTER);
-
 
             solveButton.addActionListener(e -> {
                 UValueProvider2D selectedExactSolution = (UValueProvider2D) exactSolutionCombo.getSelectedItem();
                 resultsArea.setText("");
                 heatmapsGridPanel.removeAll();
 
-
                 int[] N_values = {10, 20, 40, 80};
                 List<Solution2D> solutions = new ArrayList<>();
                 Solution2D prevSol = null;
 
-                resultsArea.append("Résolution pour u_exact: " + selectedExactSolution.getName() + "\n");
+                resultsArea.append("Solving for Exact Solution: " + selectedExactSolution.getName() + "\n"); // English
+                resultsArea.append("Method: 2D Finite Differences\n");
                 resultsArea.append("-----------------------------------------------------------\n");
-                resultsArea.append(String.format("%-5s | %-12s | %-8s\n", "N", "Erreur L∞", "Ordre"));
+                resultsArea.append(String.format("%-5s | %-12s | %-8s\n", "N", "L∞ Error", "Order")); // English
                 resultsArea.append("-----------------------------------------------------------\n");
 
 
                 for (int N : N_values) {
-                    Solution2D sol = solve(N, N, selectedExactSolution, 20000, 1e-10);
+                    Solution2D sol = solve(N, N, selectedExactSolution, 20000, 1e-10); // Using high iterations for Jacobi
                     solutions.add(sol);
                     String orderStr = "-";
                     if (prevSol != null) {
@@ -246,24 +254,23 @@ public class ODEFiniteDifference {
 
                 if (!solutions.isEmpty()) {
                     Solution2D lastSol = solutions.get(solutions.size()-1);
-                    heatmapsGridPanel.add(new HeatmapPanel(lastSol.numerical, "Numérique N=" + lastSol.nx));
-                    heatmapsGridPanel.add(new HeatmapPanel(lastSol.analytical, "Analytique N=" + lastSol.nx));
+                    heatmapsGridPanel.add(new HeatmapPanel(lastSol.numerical, "Numerical (N=" + lastSol.nx + ")")); // English
+                    heatmapsGridPanel.add(new HeatmapPanel(lastSol.analytical, "Analytical (N=" + lastSol.nx + ")"));// English
 
                     double[][] errorGrid = new double[lastSol.nx+1][lastSol.ny+1];
                     for(int i=0; i<=lastSol.nx; i++) for(int j=0; j<=lastSol.ny; j++) errorGrid[i][j] = Math.abs(lastSol.numerical[i][j] - lastSol.analytical[i][j]);
-                    heatmapsGridPanel.add(new HeatmapPanel(errorGrid, "Erreur Absolue N=" + lastSol.nx));
+                    heatmapsGridPanel.add(new HeatmapPanel(errorGrid, "Absolute Error (N=" + lastSol.nx + ")")); // English
                 }
                 heatmapsGridPanel.revalidate();
                 heatmapsGridPanel.repaint();
                 mainFrame.pack();
             });
             
-            mainFrame.setMinimumSize(new Dimension(600, 700)); // Taille minimale
+            mainFrame.setMinimumSize(new Dimension(600, 700));
             mainFrame.pack();
             mainFrame.setLocationRelativeTo(null);
             mainFrame.setVisible(true);
             
-            // Lancer une résolution initiale pour exemple
             if (exactSolutionCombo.getItemCount() > 0) {
                  exactSolutionCombo.setSelectedIndex(0);
                  solveButton.doClick();
@@ -272,6 +279,7 @@ public class ODEFiniteDifference {
     }
 }
 
+// Simple class to display 2D data as a heatmap
 class HeatmapPanel extends JPanel {
     private double[][] data;
     private String title;
@@ -280,73 +288,74 @@ class HeatmapPanel extends JPanel {
     public HeatmapPanel(double[][] dataGrid, String panelTitle) {
         this.data = dataGrid;
         this.title = panelTitle;
-        setPreferredSize(new Dimension(250, 280)); // Taille réduite pour tenir dans GridLayout
+        setPreferredSize(new Dimension(250, 280)); // Preferred size for each heatmap panel
 
         if (data == null || data.length == 0 || data[0].length == 0) return;
 
+        // Find min and max values in the data for color scaling
         for (double[] row : data) {
             for (double val : row) {
                 if (val < minVal) minVal = val;
                 if (val > maxVal) maxVal = val;
             }
         }
-        if (Math.abs(maxVal - minVal) < 1e-9) {
+        if (Math.abs(maxVal - minVal) < 1e-9) { // Handle case where all values are (nearly) equal
             maxVal = minVal + 0.5;
             minVal = minVal - 0.5;
         }
-        if (minVal == maxVal) maxVal = minVal + 1e-9; // S'assurer que maxVal > minVal
+        if (minVal == maxVal) maxVal = minVal + 1e-9; // Ensure maxVal > minVal to avoid division by zero
     }
 
     @Override
     protected void paintComponent(Graphics g) {
         super.paintComponent(g);
         if (data == null || data.length == 0 || data[0].length == 0) {
-            g.drawString("Pas de données", 10, 20);
+            g.drawString("No data to display", 10, 20); // English
             return;
         }
 
         int panelWidth = getWidth();
         int panelHeight = getHeight();
-        // Laisser de la place pour titre et légende
-        int usableWidth = panelWidth - 20; // 10px marge de chaque côté
-        int usableHeight = panelHeight - 40; // 20px pour titre, 20px pour légende
+        // Leave space for title and legend
+        int usableWidth = panelWidth - 20;
+        int usableHeight = panelHeight - 40;
 
-        int rows = data.length;      // Correspond à ny+1 points (direction y de la grille)
-        int cols = data[0].length;   // Correspond à nx+1 points (direction x de la grille)
+        int rows = data.length;      // Corresponds to ny+1 points (y-direction of grid)
+        int cols = data[0].length;   // Corresponds to nx+1 points (x-direction of grid)
 
         int cellWidth = Math.max(1, usableWidth / cols);
         int cellHeight = Math.max(1, usableHeight / rows);
         
-        // Centre la heatmap
+        // Center the heatmap drawing
         int offsetX = (panelWidth - cols * cellWidth) / 2;
-        int offsetY = 20 + (usableHeight - rows * cellHeight) / 2; // 20 pour titre
+        int offsetY = 20 + (usableHeight - rows * cellHeight) / 2; // 20 for title
 
         g.setColor(Color.BLACK);
-        g.drawString(title, panelWidth/2 - g.getFontMetrics().stringWidth(title)/2, 15);
+        g.drawString(title, panelWidth/2 - g.getFontMetrics().stringWidth(title)/2, 15); // Draw title
 
-        for (int i = 0; i < rows; i++) { // i itère sur les lignes de la matrice `data` (souvent direction y)
-            for (int j = 0; j < cols; j++) { // j itère sur les colonnes (souvent direction x)
-                double value = data[i][j]; // data[y_idx][x_idx] si on veut (i=y, j=x)
+        for (int i = 0; i < rows; i++) { // i iterates over rows of `data` (often y-direction)
+            for (int j = 0; j < cols; j++) { // j iterates over columns (often x-direction)
+                double value = data[i][j];
                 float normalized = 0.5f;
-                if (maxVal > minVal) { // Eviter division par zero
+                if (maxVal > minVal) {
                      normalized = (float) ((value - minVal) / (maxVal - minVal));
                 }
-                normalized = Math.max(0f, Math.min(1f, normalized)); // Clamp entre 0 et 1
+                normalized = Math.max(0f, Math.min(1f, normalized)); // Clamp to [0, 1]
 
-                Color color;
+                Color color; // Simple blue (low) to red (high) color scale
                 if (normalized < 0.5f) {
-                    color = new Color(normalized * 2, normalized * 2, 1f); // Bleu -> Cyan -> Blanc-ish
+                    color = new Color(normalized * 2, normalized * 2, 1f); // Blue -> Cyan -> White-ish
                 } else {
-                     color = new Color(1f, (1 - normalized) * 2, (1 - normalized) * 2); // Blanc-ish -> Jaune -> Rouge
+                     color = new Color(1f, (1 - normalized) * 2, (1 - normalized) * 2); // White-ish -> Yellow -> Red
                 }
                 g.setColor(color);
-                // Affichage standard : data[i][j] où i est l'index de ligne (y), j est l'index de colonne (x)
-                // L'origine du graphique (0,0) est en haut à gauche.
-                // Pour que l'axe y pointe vers le haut, on inverse la coordonnée y du dessin.
-                // (rows - 1 - i) pour inverser l'axe des y si data[0] est la ligne du bas.
-                // Si data[0] est la ligne du haut (comme souvent en image), alors juste 'i'.
-                // Ici, on suppose que data[i][j] correspond à u(x_j, y_i) où y_i est croissant vers le haut.
-                // Donc, pour dessiner, la ligne i=0 (y=0) doit être en bas.
+                // Standard display: data[i][j] where i is row index (y), j is col index (x)
+                // Graphics origin (0,0) is top-left.
+                // To make y-axis point upwards, invert the drawn y-coordinate.
+                // (rows - 1 - i) inverts y-axis if data[0] is the bottom row.
+                // If data[0] is top row (common in image processing), then just 'i'.
+                // Assuming data[i][j] corresponds to u(x_j, y_i) where y_i increases upwards.
+                // So, to draw, row i=0 (y=0) should be at the bottom.
                 g.fillRect(offsetX + j * cellWidth, offsetY + (rows - 1 - i) * cellHeight, cellWidth, cellHeight);
             }
         }
