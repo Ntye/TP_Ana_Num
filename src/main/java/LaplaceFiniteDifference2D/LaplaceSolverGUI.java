@@ -1,45 +1,32 @@
-package FiniteVolume2;
+package LaplaceFiniteDifference2D;
 
 import javax.swing.*;
 import java.awt.*;
-import java.awt.geom.Path2D;
-import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
-public class ODEFiniteVolume {
 
-    // Interface pour la solution exacte u(x,y) et son laplacien
+public class LaplaceSolverGUI {
+
+    // --- Définitions copiées/adaptées de ODEFiniteDifference2D ---
     interface UValueProvider2D {
         double getValue(double x, double y);
-        double getLaplacian(double x, double y);
+        double getLaplacian(double x, double y); // Pour Δu
         String getName();
     }
 
-    // Implémentations de UValueProvider2D
-    static class USinPiXSinPiY implements UValueProvider2D {
+    static class ExactSolutionLaplace implements UValueProvider2D {
         public double getValue(double x, double y) {
-            return Math.sin(Math.PI * x) * Math.sin(Math.PI * y);
+            return 2 * x + y;
         }
         public double getLaplacian(double x, double y) {
-            return -2 * Math.PI * Math.PI * Math.sin(Math.PI * x) * Math.sin(Math.PI * y);
+            return 0.0; // Δ(2x+y) = 0
         }
-        public String getName() { return "u(x,y) = sin(πx)sin(πy)"; }
+        public String getName() { return "u(x,y) = 2x + y"; }
     }
 
-    static class UX3Y3 implements UValueProvider2D {
-        public double getValue(double x, double y) {
-            return x * x * x * y * y * y;
-        }
-        public double getLaplacian(double x, double y) {
-            return 6 * x * y * y * y + 6 * x * x * x * y;
-        }
-        public String getName() { return "u(x,y) = x³y³"; }
-    }
-
-    // Classe pour stocker les résultats de la solution 2D
     static class Solution2D {
         double[][] x_coords_node;
         double[][] y_coords_node;
@@ -69,7 +56,6 @@ public class ODEFiniteVolume {
         }
     }
 
-    // Solveur itératif de Jacobi pour le système 2D résultant de -Δu = f
     private static void solveJacobi(double[][] u_solution_grid, double[][] f_source_grid,
                                     int nx_intervals, int ny_intervals, int maxIterations,
                                     double convergenceTolerance, UValueProvider2D uExactProvider) {
@@ -81,7 +67,6 @@ public class ODEFiniteVolume {
         double[][] u_old_iter = new double[nx_intervals + 1][ny_intervals + 1];
         double maxAbsoluteDifference = 0.0;
 
-        // Appliquer les conditions aux limites de Dirichlet initiales
         for (int i = 0; i <= nx_intervals; i++) {
             for (int j = 0; j <= ny_intervals; j++) {
                 if (i == 0 || i == nx_intervals || j == 0 || j == ny_intervals) {
@@ -102,7 +87,9 @@ public class ODEFiniteVolume {
                     double sum_neighbors_terms = (u_old_iter[i-1][j] + u_old_iter[i+1][j])/hx_sq +
                                                  (u_old_iter[i][j-1] + u_old_iter[i][j+1])/hy_sq;
                     double denominator = (2.0/hx_sq + 2.0/hy_sq);
+
                     u_solution_grid[i][j] = (sum_neighbors_terms + f_source_grid[i][j]) / denominator;
+
                     double difference = Math.abs(u_solution_grid[i][j] - u_old_iter[i][j]);
                     if (difference > maxAbsoluteDifference) {
                         maxAbsoluteDifference = difference;
@@ -110,31 +97,40 @@ public class ODEFiniteVolume {
                 }
             }
             if (maxAbsoluteDifference < convergenceTolerance) {
-                System.out.println("Jacobi (Volumes Finis 2D) a convergé en " + (iter + 1) + " itérations. Différence Max = " + maxAbsoluteDifference);
+                System.out.println("Jacobi a convergé en " + (iter + 1) + " itérations. Différence Max = " + maxAbsoluteDifference);
                 return;
             }
         }
-        System.out.println("Jacobi (Volumes Finis 2D): Nombre max d'itérations atteint sans convergence. Différence Max = " + maxAbsoluteDifference);
+        System.out.println("Jacobi: Nombre max d'itérations atteint sans convergence. Différence Max = " + maxAbsoluteDifference);
     }
+    // --- Fin des définitions copiées/adaptées ---
 
-    // Méthode principale de résolution pour le problème 2D
-    public static Solution2D solve(int nx_intervals, int ny_intervals, UValueProvider2D uExactProvider,
-                                   int maxSolverIter, double solverTolerance) {
-        Solution2D sol = new Solution2D(nx_intervals, ny_intervals, uExactProvider);
+    /**
+     * Résout -Δu = 0 pour u_exact(x,y) = 2x + y sur un maillage Nx x Ny.
+     */
+    public static Solution2D solveLaplace(int N, UValueProvider2D exactSolutionProvider, int maxIter, double tolerance) {
+        int nx_intervals = N;
+        int ny_intervals = N;
+
+        Solution2D sol = new Solution2D(nx_intervals, ny_intervals, exactSolutionProvider);
         double hx_step = 1.0 / nx_intervals;
         double hy_step = 1.0 / ny_intervals;
 
-        double[][] f_source_terms = new double[nx_intervals + 1][ny_intervals + 1];
+        // Pour -Δu = 0, le terme source f(x,y) est 0 partout.
+        // Le laplacien de la solution exacte 2x+y est aussi 0.
+        // Donc f_source_terms[i][j] = -exactSolutionProvider.getLaplacian(x,y) sera 0.
+        double[][] f_source_terms = new double[nx_intervals + 1][ny_intervals + 1]; // Initialisé à 0 par défaut
+
         for (int i = 0; i <= nx_intervals; i++) {
             for (int j = 0; j <= ny_intervals; j++) {
                 double x = i * hx_step;
                 double y = j * hy_step;
-                f_source_terms[i][j] = -uExactProvider.getLaplacian(x, y);
-                sol.analytical[i][j] = uExactProvider.getValue(x,y);
+                sol.analytical[i][j] = exactSolutionProvider.getValue(x,y);
+                // f_source_terms[i][j] = 0; // Explicitement, bien que déjà 0 par défaut
             }
         }
-        
-        solveJacobi(sol.numerical, f_source_terms, nx_intervals, ny_intervals, maxSolverIter, solverTolerance, uExactProvider);
+
+        solveJacobi(sol.numerical, f_source_terms, nx_intervals, ny_intervals, maxIter, tolerance, exactSolutionProvider);
 
         sol.errorLinf = 0.0;
         for (int i = 0; i <= nx_intervals; i++) {
@@ -147,130 +143,99 @@ public class ODEFiniteVolume {
         }
         return sol;
     }
-    
-    public static double calculateConvergenceOrder(double error1, double error2, int n1_intervals, int n2_intervals) {
-        if (n1_intervals == n2_intervals) return Double.NaN;
-        if (error1 <= 1e-14 && error2 <= 1e-14) return Double.NaN;
-        if (error2 <= 1e-14) return Double.POSITIVE_INFINITY;
-        if (error1 <= 1e-14) return Double.NEGATIVE_INFINITY;
-
-        double ratio_err = error1 / error2;
-        double ratio_n = (double)n2_intervals / n1_intervals;
-        if (ratio_err <= 0 || ratio_n <=0) return Double.NaN;
-        return Math.log(ratio_err) / Math.log(ratio_n);
-    }
 
     public static void main(String[] args) {
         SwingUtilities.invokeLater(() -> {
-            UValueProvider2D[] exactSolutions = {new USinPiXSinPiY(), new UX3Y3()};
             Font uiFont = new Font("SansSerif", Font.PLAIN, 12);
+            Font boldFont = new Font("SansSerif", Font.BOLD, 12);
+            Font titleFont = new Font("SansSerif", Font.BOLD, 14);
 
-            JFrame mainFrame = new JFrame("Résolveur Volumes Finis 2D (-Δu = f)");
+            JFrame mainFrame = new JFrame("Solveur Laplace 2D pour u=2x+y (Maillage Variable)");
             mainFrame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-            mainFrame.setLayout(new BorderLayout(5,5));
+            mainFrame.setLayout(new BorderLayout(10, 10));
+            ((JPanel)mainFrame.getContentPane()).setBorder(BorderFactory.createEmptyBorder(10,10,10,10));
 
-            JPanel controlPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 5));
-            JComboBox<UValueProvider2D> exactSolutionCombo = new JComboBox<>(exactSolutions);
-            exactSolutionCombo.setFont(uiFont);
-            exactSolutionCombo.setRenderer(new DefaultListCellRenderer() {
-                 @Override
-                public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
-                    super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
-                    if (value instanceof UValueProvider2D) setText(((UValueProvider2D) value).getName());
-                    setFont(uiFont);
-                    return this;
-                }
-            });
+            // Panneau de contrôle
+            JPanel controlPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+            controlPanel.add(new JLabel("Nombre d'intervalles N:"));
+            JSpinner nSpinner = new JSpinner(new SpinnerNumberModel(10, 2, 100, 1)); // N=10 par défaut, min 2, max 100
+            nSpinner.setFont(uiFont);
+            controlPanel.add(nSpinner);
 
-            JLabel exactSolLabel = new JLabel("Sol. exacte u(x,y):");
-            exactSolLabel.setFont(uiFont);
-            controlPanel.add(exactSolLabel);
-            controlPanel.add(exactSolutionCombo);
-            
-            JButton solveButton = new JButton("Résoudre et Calculer Erreurs"); // Texte modifié
+            JButton solveButton = new JButton("Résoudre");
             solveButton.setFont(uiFont);
             controlPanel.add(solveButton);
 
-            // JComboBox pour sélectionner N pour les heatmaps
-            controlPanel.add(new JLabel("Afficher N:"));
-            JComboBox<Integer> nSelectorCombo = new JComboBox<>();
-            nSelectorCombo.setFont(uiFont);
-            controlPanel.add(nSelectorCombo);
-
-            JTextArea resultsArea = new JTextArea(12, 50);
-            resultsArea.setEditable(false);
+            // Zone pour afficher les résultats textuels
+            JTextArea resultsArea = new JTextArea(8, 45);
             resultsArea.setFont(new Font("Monospaced", Font.PLAIN, 12));
-            JScrollPane scrollPane = new JScrollPane(resultsArea);
+            resultsArea.setEditable(false);
 
+            // Panneau pour les heatmaps
             JPanel heatmapsOuterPanel = new JPanel(new BorderLayout(5,5));
-            JLabel heatmapTitleLabel = new JLabel("Cartes de Chaleur (Numérique, Analytique, Erreur) - Vol. Finis 2D", SwingConstants.CENTER);
-            heatmapTitleLabel.setFont(new Font("SansSerif", Font.BOLD, 14));
+            JLabel heatmapTitleLabel = new JLabel("Cartes de Chaleur", SwingConstants.CENTER);
+            heatmapTitleLabel.setFont(titleFont);
             heatmapsOuterPanel.add(heatmapTitleLabel, BorderLayout.NORTH);
             JPanel heatmapsGridPanel = new JPanel(new GridLayout(1,3,5,5));
             heatmapsOuterPanel.add(heatmapsGridPanel, BorderLayout.CENTER);
 
-            JSplitPane splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT, scrollPane, heatmapsOuterPanel);
-            splitPane.setResizeWeight(0.4);
+            // Organisation générale
+            JPanel textAndHeatmapPanel = new JPanel(new BorderLayout(5,10));
+            textAndHeatmapPanel.add(new JScrollPane(resultsArea), BorderLayout.NORTH);
+            textAndHeatmapPanel.add(heatmapsOuterPanel, BorderLayout.CENTER);
 
             mainFrame.add(controlPanel, BorderLayout.NORTH);
-            mainFrame.add(splitPane, BorderLayout.CENTER);
+            mainFrame.add(textAndHeatmapPanel, BorderLayout.CENTER);
 
             solveButton.addActionListener(e -> {
-                UValueProvider2D selectedExactSolution = (UValueProvider2D) exactSolutionCombo.getSelectedItem();
-                resultsArea.setText("");
-                heatmapsGridPanel.removeAll();
+                int N = (Integer) nSpinner.getValue();
+                UValueProvider2D exactLaplaceSolution = new ExactSolutionLaplace();
 
-                int[] N_values = {10, 20, 40, 80};
-                List<Solution2D> solutions = new ArrayList<>();
-                Solution2D prevSol = null;
+                Solution2D sol = solveLaplace(N, exactLaplaceSolution, 20000, 1e-9);
 
-                resultsArea.append("Résolution pour solution exacte: " + selectedExactSolution.getName() + "\n");
-                resultsArea.append("Méthode: Volumes Finis 2D\n");
-                resultsArea.append("-----------------------------------------------------------\n");
-                resultsArea.append(String.format("%-5s | %-12s | %-8s\n", "N", "Erreur L∞", "Ordre"));
-                resultsArea.append("-----------------------------------------------------------\n");
+                resultsArea.setText(""); // Effacer les résultats précédents
+                StringBuilder sb = new StringBuilder();
+                sb.append(String.format("Équation: -Δu = 0 (Solution exacte u=2x+y)\n"));
+                sb.append(String.format("Maillage: %dx%d intervalles (h=%.3f)\n", sol.nx, sol.ny, 1.0/sol.nx));
+                sb.append(String.format("Erreur L∞: %.4e\n", sol.errorLinf));
 
-                for (int N : N_values) {
-                    Solution2D sol = solve(N, N, selectedExactSolution, 20000, 1e-10);
-                    solutions.add(sol);
-                    String orderStr = "-";
-                    if (prevSol != null) {
-                        double order = calculateConvergenceOrder(prevSol.errorLinf, sol.errorLinf, prevSol.nx, sol.nx);
-                        orderStr = String.format("%.2f", order);
+                // Si N est petit, afficher la grille dans la zone de texte
+                if (N <= 5) { // Par exemple, pour N petit
+                    sb.append("\nGrille de solution numérique u_ij:\n");
+                    for (int j = sol.ny; j >= 0; j--) {
+                        for (int i = 0; i <= sol.nx; i++) {
+                            sb.append(String.format("%.3f\t", sol.numerical[i][j]));
+                        }
+                        sb.append("\n");
                     }
-                    resultsArea.append(String.format("%-5d | %-12.4e | %-8s\n", N, sol.errorLinf, orderStr));
-                    prevSol = sol;
                 }
-                resultsArea.append("-----------------------------------------------------------\n");
+                resultsArea.setText(sb.toString());
 
-                if (!solutions.isEmpty()) {
-                    Solution2D lastSol = solutions.get(solutions.size()-1);
-                    heatmapsGridPanel.add(new HeatmapPanel(lastSol.numerical, "Numérique VF (N=" + lastSol.nx + ")"));
-                    heatmapsGridPanel.add(new HeatmapPanel(lastSol.analytical, "Analytique VF (N=" + lastSol.nx + ")"));
-                    
-                    double[][] errorGrid = new double[lastSol.nx+1][lastSol.ny+1];
-                    for(int i=0; i<=lastSol.nx; i++) for(int j=0; j<=lastSol.ny; j++) errorGrid[i][j] = Math.abs(lastSol.numerical[i][j] - lastSol.analytical[i][j]);
-                    heatmapsGridPanel.add(new HeatmapPanel(errorGrid, "Erreur Absolue VF (N=" + lastSol.nx + ")"));
-                }
+                heatmapsGridPanel.removeAll();
+                heatmapsGridPanel.add(new HeatmapPanel(sol.numerical, "Numérique (N=" + sol.nx + ")"));
+                heatmapsGridPanel.add(new HeatmapPanel(sol.analytical, "Analytique (N=" + sol.nx + ")"));
+
+                double[][] errorGrid = new double[sol.nx+1][sol.ny+1];
+                for(int i=0; i<=sol.nx; i++) for(int j=0; j<=sol.ny; j++) errorGrid[i][j] = Math.abs(sol.numerical[i][j] - sol.analytical[i][j]);
+                heatmapsGridPanel.add(new HeatmapPanel(errorGrid, "Erreur Absolue (N=" + sol.nx + ")"));
+
                 heatmapsGridPanel.revalidate();
                 heatmapsGridPanel.repaint();
                 mainFrame.pack();
             });
 
-            mainFrame.setMinimumSize(new Dimension(600, 700));
             mainFrame.pack();
+            mainFrame.setMinimumSize(new Dimension(600,500));
             mainFrame.setLocationRelativeTo(null);
             mainFrame.setVisible(true);
 
-            if (exactSolutionCombo.getItemCount() > 0) {
-                 exactSolutionCombo.setSelectedIndex(0);
-                 solveButton.doClick();
-            }
+            // Lancer une résolution initiale
+            solveButton.doClick();
         });
     }
 }
 
-// Classe simple pour afficher des données 2D sous forme de carte de chaleur
+// Classe HeatmapPanel (copiée de ODEFiniteDifference2.java et traduite)
 class HeatmapPanel extends JPanel {
     private double[][] data;
     private String title;
@@ -279,7 +244,7 @@ class HeatmapPanel extends JPanel {
     public HeatmapPanel(double[][] dataGrid, String panelTitle) {
         this.data = dataGrid;
         this.title = panelTitle;
-        setPreferredSize(new Dimension(250, 280));
+        setPreferredSize(new Dimension(220, 250));
 
         if (data == null || data.length == 0 || data[0].length == 0) return;
 
@@ -315,7 +280,7 @@ class HeatmapPanel extends JPanel {
 
         int cellWidth = Math.max(1, usableWidth / cols);
         int cellHeight = Math.max(1, usableHeight / rows);
-        
+
         int offsetX = (panelWidth - cols * cellWidth) / 2;
         int offsetY = 20 + (usableHeight - rows * cellHeight) / 2;
 

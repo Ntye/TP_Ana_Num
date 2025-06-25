@@ -9,8 +9,9 @@ Le code source Java se trouve dans `src/main/java/`. Chaque méthode a son propr
 *   `FiniteVolume1` : Volumes Finis 1D
 *   `FiniteDifference2` : Différences Finies 2D
 *   `FiniteVolume2` : Volumes Finis 2D
+*   `LaplaceFiniteDifference2D` : Solveur pour l'équation de Laplace en 2D (`-Δu = 0`) avec `u(x,y)=2x+y` sur maillage variable.
 
-Chaque package contient une classe principale avec une méthode `main` qui lance une interface graphique Swing pour cette méthode spécifique (par exemple, `FiniteDifference1.ODEFiniteDifference`).
+Chaque package contient une classe principale avec une méthode `main` qui lance une interface graphique Swing.
 
 ## Prérequis
 
@@ -30,7 +31,7 @@ Chaque package contient une classe principale avec une méthode `main` qui lance
     ```
     Compilez tous les fichiers `.java` en spécifiant le répertoire de sortie et l'encodage UTF-8 pour une gestion correcte des accents. Depuis la racine du projet :
     ```bash
-    javac -encoding UTF-8 -d out src/main/java/FiniteDifference1/ODEFiniteDifference.java src/main/java/FiniteVolume1/ODEFiniteVolume.java src/main/java/FiniteDifference2/ODEFiniteDifference.java src/main/java/FiniteVolume2/ODEFiniteVolume.java
+    javac -encoding UTF-8 -d out src/main/java/FiniteDifference1/ODEFiniteDifference.java src/main/java/FiniteVolume1/ODEFiniteVolume.java src/main/java/FiniteDifference2/ODEFiniteDifference.java src/main/java/FiniteVolume2/ODEFiniteVolume.java src/main/java/LaplaceFiniteDifference2D/LaplaceSolverGUI.java
     ```
     Si vous utilisez Java 11+ et que les classes `HeatmapPanel` sont laissées comme classes de premier niveau (non-statiques imbriquées ou publiques séparées) dans les fichiers 2D, vous pourriez avoir besoin de les compiler explicitement ou de les rendre statiques imbriquées / publiques. Le code fourni les a comme classes de premier niveau dans le même fichier, ce qui est valide.
 
@@ -62,6 +63,10 @@ Après la compilation, vous pouvez exécuter chaque programme en spécifiant le 
 *   **Volumes Finis 2D:**
     ```bash
     java -cp out FiniteVolume2.ODEFiniteVolume
+    ```
+*   **Solveur Laplace 2D avec UI (Maillage Variable):**
+    ```bash
+    java -cp out LaplaceFiniteDifference2D.LaplaceSolverGUI
     ```
 
 **Si compilé avec Maven (depuis la racine du projet, après `mvn compile`) :**
@@ -100,7 +105,15 @@ Le classpath est `target/classes/`.
     *   Les conditions aux limites de Dirichlet sont prises à partir de la solution exacte choisie sur les bords du domaine `(0,1)x(0,1)`.
     *   Cliquez sur **"Résoudre et Afficher"**.
     *   La zone de texte affichera l'erreur L∞ et l'ordre de convergence pour N x N avec N = 10, 20, 40, 80.
-    *   La partie inférieure affichera trois heatmaps pour N=80 : solution numérique, analytique, et erreur absolue.
+    *   Un sélecteur "Afficher N:" permet de choisir la taille de maillage pour laquelle les heatmaps sont affichées.
+    *   La partie inférieure affichera trois heatmaps pour le N sélectionné : solution numérique, analytique, et erreur absolue.
+
+*   **Solveur Laplace 2D (`LaplaceSolverGUI` dans `LaplaceFiniteDifference2D`) :**
+    *   Résout `-Δu = 0` avec `u(x,y) = 2x+y` comme conditions aux limites et solution exacte.
+    *   Entrez le "Nombre d'intervalles N" désiré (par exemple, 10, 20, etc.).
+    *   Cliquez sur "Résoudre".
+    *   La zone de texte affiche l'erreur L∞ pour le N choisi. Si N <= 5, la grille numérique est aussi affichée en texte.
+    *   Trois heatmaps (Numérique, Analytique, Erreur Absolue) sont affichées pour le N choisi.
 
 ## Interprétation des Résultats
 

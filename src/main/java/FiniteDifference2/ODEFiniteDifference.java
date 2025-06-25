@@ -19,6 +19,12 @@ public class ODEFiniteDifference {
     }
 
     // Implémentations de UValueProvider2D
+    static class ULaplace2XPlusY implements UValueProvider2D {
+        public double getValue(double x, double y) { return 2 * x + y; }
+        public double getLaplacian(double x, double y) { return 0.0; } // Δ(2x+y) = 0
+        public String getName() { return "u(x,y) = 2x + y (Laplace)"; }
+    }
+
     static class USinPiXSinPiY implements UValueProvider2D {
         public double getValue(double x, double y) {
             return Math.sin(Math.PI * x) * Math.sin(Math.PI * y);
@@ -117,9 +123,65 @@ public class ODEFiniteDifference {
         System.out.println("Jacobi: Nombre max d'itérations atteint sans convergence. Différence Max = " + maxAbsoluteDifference);
     }
 
+    private static void solveGaussSeidelSerial(double[][] u_solution_grid, double[][] f_source_grid,
+                                               int nx_intervals, int ny_intervals, int maxIterations,
+                                               double convergenceTolerance, UValueProvider2D uExactProvider) {
+        double hx_step = 1.0 / nx_intervals;
+        double hy_step = 1.0 / ny_intervals;
+        double hx_sq = hx_step * hx_step;
+        double hy_sq = hy_step * hy_step;
+        double maxAbsoluteDifference = 0.0;
+
+        // Appliquer les conditions aux limites de Dirichlet initiales
+        for (int i = 0; i <= nx_intervals; i++) {
+            for (int j = 0; j <= ny_intervals; j++) {
+                if (i == 0 || i == nx_intervals || j == 0 || j == ny_intervals) {
+                    u_solution_grid[i][j] = uExactProvider.getValue(i * hx_step, j * hy_step);
+                } else {
+                    u_solution_grid[i][j] = 0.0; // Estimation initiale
+                }
+            }
+        }
+
+        for (int iter = 0; iter < maxIterations; iter++) {
+            maxAbsoluteDifference = 0.0;
+            // On a besoin de u_old pour calculer la différence max pour la convergence
+            double[][] u_old_iter_for_diff = new double[nx_intervals + 1][ny_intervals + 1];
+             for (int i = 0; i <= nx_intervals; i++) {
+                System.arraycopy(u_solution_grid[i], 0, u_old_iter_for_diff[i], 0, ny_intervals + 1);
+            }
+
+            for (int i = 1; i < nx_intervals; i++) {
+                for (int j = 1; j < ny_intervals; j++) {
+                    // Gauss-Seidel utilise les valeurs mises à jour dès qu'elles sont disponibles.
+                    // u_solution_grid[i-1][j] et u_solution_grid[i][j-1] sont de l'itération courante.
+                    // u_solution_grid[i+1][j] et u_solution_grid[i][j+1] sont de l'itération précédente (stockées dans u_old_iter_for_diff)
+                    double sum_neighbors_terms = (u_solution_grid[i-1][j] + u_old_iter_for_diff[i+1][j])/hx_sq +
+                                                 (u_solution_grid[i][j-1] + u_old_iter_for_diff[i][j+1])/hy_sq;
+                    double denominator = (2.0/hx_sq + 2.0/hy_sq);
+
+                    double u_new = (sum_neighbors_terms + f_source_grid[i][j]) / denominator;
+                    // La différence pour la convergence est calculée par rapport à la valeur avant cette mise à jour dans cette itération
+                    // double difference = Math.abs(u_new - u_solution_grid[i][j]); // Incorrect, u_solution_grid[i][j] est u_old_iter_for_diff[i][j]
+                    double difference = Math.abs(u_new - u_old_iter_for_diff[i][j]);
+                    if (difference > maxAbsoluteDifference) {
+                        maxAbsoluteDifference = difference;
+                    }
+                    u_solution_grid[i][j] = u_new;
+                }
+            }
+
+            if (maxAbsoluteDifference < convergenceTolerance) {
+                System.out.println("Gauss-Seidel (Série) a convergé en " + (iter + 1) + " itérations. Différence Max = " + maxAbsoluteDifference);
+                return;
+            }
+        }
+        System.out.println("Gauss-Seidel (Série): Nombre max d'itérations atteint. Différence Max = " + maxAbsoluteDifference);
+    }
+
     // Méthode principale de résolution pour le problème 2D
-    public static Solution2D solve(int nx_intervals, int ny_intervals, UValueProvider2D uExactProvider,
-                                   int maxSolverIter, double solverTolerance) {
+    public static Solution2D solve(int nx_intervals, int ny_intervals, UValueProvider2D uExactProvider, SolverType solverType,
+                                   int maxSolverIter, double solverTolerance) { // Ajout de solverType
         Solution2D sol = new Solution2D(nx_intervals, ny_intervals, uExactProvider);
         double hx_step = 1.0 / nx_intervals;
         double hy_step = 1.0 / ny_intervals;
@@ -134,7 +196,19 @@ public class ODEFiniteDifference {
             }
         }
         
-        solveJacobi(sol.numerical, f_source_terms, nx_intervals, ny_intervals, maxSolverIter, solverTolerance, uExactProvider);
+        // Appel du solveur sélectionné
+        switch (solverType) {
+            case GAUSS_SEIDEL_SERIAL:
+                solveGaussSeidelSerial(sol.numerical, f_source_terms, nx_intervals, ny_intervals, maxSolverIter, solverTolerance, uExactProvider);
+                break;
+            case GAUSS_SEIDEL_RED_BLACK:
+                solveGaussSeidelRedBlack(sol.numerical, f_source_terms, nx_intervals, ny_intervals, maxSolverIter, solverTolerance, uExactProvider);
+                break;
+            case JACOBI:
+            default:
+                solveJacobi(sol.numerical, f_source_terms, nx_intervals, ny_intervals, maxSolverIter, solverTolerance, uExactProvider);
+                break;
+        }
 
         sol.errorLinf = 0.0;
         for (int i = 0; i <= nx_intervals; i++) {
@@ -160,10 +234,20 @@ public class ODEFiniteDifference {
         return Math.log(ratio_err) / Math.log(ratio_n);
     }
 
+    enum SolverType {
+        JACOBI("Jacobi"),
+        GAUSS_SEIDEL_SERIAL("Gauss-Seidel (Série)"),
+        GAUSS_SEIDEL_RED_BLACK("Gauss-Seidel (Rouge-Noir)");
+
+        private final String displayName;
+        SolverType(String displayName) { this.displayName = displayName; }
+        @Override public String toString() { return displayName; }
+    }
+
     public static void main(String[] args) {
         SwingUtilities.invokeLater(() -> {
-            UValueProvider2D[] exactSolutions = {new USinPiXSinPiY(), new UX3Y3()};
-            Font uiFont = new Font("SansSerif", Font.PLAIN, 12); // Police pour UI
+            UValueProvider2D[] exactSolutions = {new USinPiXSinPiY(), new UX3Y3(), new ULaplace2XPlusY()}; // Ajout de la solution Laplace
+            Font uiFont = new Font("SansSerif", Font.PLAIN, 12);
             
             JFrame mainFrame = new JFrame("Résolveur Différences Finies 2D (-Δu = f)");
             mainFrame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
@@ -187,9 +271,20 @@ public class ODEFiniteDifference {
             controlPanel.add(exactSolLabel);
             controlPanel.add(exactSolutionCombo);
             
-            JButton solveButton = new JButton("Résoudre et Afficher");
+            JButton solveButton = new JButton("Résoudre et Calculer Erreurs"); // Texte modifié
             solveButton.setFont(uiFont);
             controlPanel.add(solveButton);
+
+            // JComboBox pour sélectionner N pour les heatmaps
+            controlPanel.add(new JLabel("Afficher N:"));
+            JComboBox<Integer> nSelectorCombo = new JComboBox<>();
+            nSelectorCombo.setFont(uiFont);
+            controlPanel.add(nSelectorCombo);
+
+            controlPanel.add(new JLabel("Solveur:"));
+            JComboBox<SolverType> solverTypeCombo = new JComboBox<>(SolverType.values());
+            solverTypeCombo.setFont(uiFont);
+            controlPanel.add(solverTypeCombo);
 
             JTextArea resultsArea = new JTextArea(12, 50);
             resultsArea.setEditable(false);
@@ -208,14 +303,16 @@ public class ODEFiniteDifference {
 
             mainFrame.add(controlPanel, BorderLayout.NORTH);
             mainFrame.add(splitPane, BorderLayout.CENTER);
+            final List<Solution2D> calculatedSolutions = new ArrayList<>(); // Stocker les solutions
 
             solveButton.addActionListener(e -> {
                 UValueProvider2D selectedExactSolution = (UValueProvider2D) exactSolutionCombo.getSelectedItem();
                 resultsArea.setText("");
                 heatmapsGridPanel.removeAll();
+                calculatedSolutions.clear();
+                nSelectorCombo.removeAllItems();
 
                 int[] N_values = {10, 20, 40, 80};
-                List<Solution2D> solutions = new ArrayList<>();
                 Solution2D prevSol = null;
 
                 resultsArea.append("Résolution pour solution exacte: " + selectedExactSolution.getName() + "\n");
@@ -224,9 +321,14 @@ public class ODEFiniteDifference {
                 resultsArea.append(String.format("%-5s | %-12s | %-8s\n", "N", "Erreur L∞", "Ordre"));
                 resultsArea.append("-----------------------------------------------------------\n");
 
+                SolverType selectedSolverType = (SolverType) solverTypeCombo.getSelectedItem();
+                resultsArea.append("Solveur utilisé: " + selectedSolverType + "\n");
+
+
                 for (int N : N_values) {
-                    Solution2D sol = solve(N, N, selectedExactSolution, 20000, 1e-10);
-                    solutions.add(sol);
+                    Solution2D sol = solve(N, N, selectedExactSolution, selectedSolverType, 20000, 1e-10);
+                    calculatedSolutions.add(sol); // Stocker
+                    nSelectorCombo.addItem(N);    // Ajouter au combobox
                     String orderStr = "-";
                     if (prevSol != null) {
                         double order = calculateConvergenceOrder(prevSol.errorLinf, sol.errorLinf, prevSol.nx, sol.nx);
@@ -237,18 +339,40 @@ public class ODEFiniteDifference {
                 }
                 resultsArea.append("-----------------------------------------------------------\n");
 
-                if (!solutions.isEmpty()) {
-                    Solution2D lastSol = solutions.get(solutions.size()-1);
-                    heatmapsGridPanel.add(new HeatmapPanel(lastSol.numerical, "Numérique (N=" + lastSol.nx + ")"));
-                    heatmapsGridPanel.add(new HeatmapPanel(lastSol.analytical, "Analytique (N=" + lastSol.nx + ")"));
+                if (!calculatedSolutions.isEmpty()) {
+                    nSelectorCombo.setSelectedIndex(nSelectorCombo.getItemCount() - 1); // Sélectionner le dernier N
+                } else { // Si aucune solution n'a été calculée (par exemple, N_values est vide)
+                    heatmapsGridPanel.revalidate();
+                    heatmapsGridPanel.repaint();
+                }
+                // L'action listener de nSelectorCombo affichera les heatmaps pour le N sélectionné
+            });
 
-                    double[][] errorGrid = new double[lastSol.nx+1][lastSol.ny+1];
-                    for(int i=0; i<=lastSol.nx; i++) for(int j=0; j<=lastSol.ny; j++) errorGrid[i][j] = Math.abs(lastSol.numerical[i][j] - lastSol.analytical[i][j]);
-                    heatmapsGridPanel.add(new HeatmapPanel(errorGrid, "Erreur Absolue (N=" + lastSol.nx + ")"));
+            nSelectorCombo.addActionListener(e -> {
+                if (nSelectorCombo.getSelectedItem() == null || calculatedSolutions.isEmpty()) {
+                    return;
+                }
+                int selectedN = (Integer) nSelectorCombo.getSelectedItem();
+                Solution2D solToShow = null;
+                for(Solution2D s : calculatedSolutions) {
+                    if(s.nx == selectedN) { // en supposant nx=ny=N
+                        solToShow = s;
+                        break;
+                    }
+                }
+
+                heatmapsGridPanel.removeAll();
+                if (solToShow != null) {
+                    heatmapsGridPanel.add(new HeatmapPanel(solToShow.numerical, "Numérique (N=" + solToShow.nx + ")"));
+                    heatmapsGridPanel.add(new HeatmapPanel(solToShow.analytical, "Analytique (N=" + solToShow.nx + ")"));
+
+                    double[][] errorGrid = new double[solToShow.nx+1][solToShow.ny+1];
+                    for(int i=0; i<=solToShow.nx; i++) for(int j=0; j<=solToShow.ny; j++) errorGrid[i][j] = Math.abs(solToShow.numerical[i][j] - solToShow.analytical[i][j]);
+                    heatmapsGridPanel.add(new HeatmapPanel(errorGrid, "Erreur Absolue (N=" + solToShow.nx + ")"));
                 }
                 heatmapsGridPanel.revalidate();
                 heatmapsGridPanel.repaint();
-                mainFrame.pack();
+                // mainFrame.pack(); // Peut causer des redimensionnements constants, optionnel
             });
             
             mainFrame.setMinimumSize(new Dimension(600, 700));
